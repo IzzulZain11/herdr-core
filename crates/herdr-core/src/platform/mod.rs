@@ -1,0 +1,74 @@
+//! What differs between Unix (Linux, macOS) and Windows, behind one small
+//! surface: connections, terminals, process trees, the console, files.
+//! Everything above it is shared.
+
+#[cfg(unix)]
+mod unix;
+#[cfg(unix)]
+pub use unix::*;
+
+#[cfg(target_os = "linux")]
+pub mod systemd;
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::*;
+#[cfg(windows)]
+mod windows_exec;
+#[cfg(windows)]
+pub use windows_exec::*;
+
+/// Whether Windows is ending this session, including logout.
+pub fn host_shutdown_in_progress() -> bool {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SHUTTINGDOWN};
+        // Keep USER32 statically linked: first loading it during shutdown can interrupt exit recording.
+        unsafe { GetSystemMetrics(SM_SHUTTINGDOWN) != 0 }
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+/// What marks a process as an ssh login's.
+pub const SSH_LOGIN: &[&str] = &["SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"];
+
+/// This process's environment, without what isn't UTF-8.
+pub fn utf8_vars() -> impl Iterator<Item = (String, String)> {
+    std::env::vars_os().filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+}
+
+/// The core's environment as programs get it: never an ssh login's marks,
+/// and on Linux the login session as the user manager has it now.
+pub async fn program_env() -> std::collections::BTreeMap<String, String> {
+    #[allow(unused_mut)]
+    let mut env: std::collections::BTreeMap<String, String> = utf8_vars().collect();
+    #[cfg(target_os = "linux")]
+    {
+        env.retain(|k, _| !systemd::SERVICE.contains(&k.as_str()));
+        if let Ok(Some(manager)) = tokio::task::spawn_blocking(systemd::manager_env).await {
+            systemd::apply_session(&mut env, &manager);
+        }
+    }
+    env.retain(|k, _| !SSH_LOGIN.contains(&k.as_str()));
+    env
+}
+
+/// 32 random hex digits (ids, socket and folder names).
+pub fn random_hex() -> String {
+    let mut bytes = [0u8; 16];
+    random_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Signal numbers as the holder protocol carries them (the Unix ones; the
+/// Windows holder maps them onto its own means).
+pub mod signal {
+    pub const HUP: i32 = 1;
+    pub const INT: i32 = 2;
+    pub const KILL: i32 = 9;
+    pub const TERM: i32 = 15;
+}

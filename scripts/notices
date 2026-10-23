@@ -1,0 +1,32 @@
+#!/bin/sh
+# Writes crates/herdr-core/THIRD-PARTY-NOTICES, which hc carries inside
+# (`hc --licenses`): what libghostty-vt bundles (distribution/notices/, by
+# hand), then every crate in Cargo.lock with its own license file. Run after
+# dependencies change; a test fails when a crate is missing.
+set -eu
+cd "$(dirname "$0")/.."
+out=crates/herdr-core/THIRD-PARTY-NOTICES
+{
+    echo "hc (herdr-core) is Apache-2.0. It includes the software below."
+    for part in ghostty:"Ghostty's libghostty-vt (MIT)" simdutf:"simdutf, in libghostty-vt (MIT, or Apache-2.0)" \
+        highway:"Highway, in libghostty-vt (BSD-3-Clause, or Apache-2.0)" wuffs:"Wuffs, in libghostty-vt (MIT, or Apache-2.0)" \
+        zig:"Zig's compiler_rt (MIT)"; do
+        printf '\n==== %s\n\n' "${part#*:}"
+        cat "distribution/notices/${part%%:*}.txt"
+    done
+    cargo metadata --format-version 1 --locked | jq -r '.packages[] | select(.source != null) | "\(.name) \(.version)\t\(.license)\t\(.manifest_path)"' | sort |
+        while IFS="$(printf '\t')" read -r crate license manifest; do
+            dir=$(dirname "$manifest")
+            printf '\n==== %s (%s)\n\n' "$crate" "$license"
+            file=
+            for pattern in '^license-mit' '^license(\.md|\.txt)?$' '^license'; do
+                file=$(ls "$dir" | grep -i -m1 -E "$pattern") && break
+            done
+            if [ -n "$file" ]; then cat "$dir/$file"; else echo "(the crate ships no license text; its license: $license)"; fi
+            for extra in $(ls "$dir" | grep -i -E '^license-unicode|^notice'); do
+                printf '\n'
+                cat "$dir/$extra"
+            done
+        done
+} >"$out"
+echo "wrote $out ($(wc -c <"$out") bytes)"
