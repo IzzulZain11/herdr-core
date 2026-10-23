@@ -294,9 +294,16 @@ async fn dial_once(
         Err(_) => return Err(unreachable(to, "no answer within 20 s")),
         Ok(Some(reply)) => reply,
         Ok(None) => {
+            // Bounded: something it started may hold stderr open, and a dial
+            // that never ends leaves the machine "connecting" for good.
             let mut err = String::new();
-            let _ = stderr.read_to_string(&mut err).await;
-            let status = child.wait().await.ok().and_then(|s| s.code());
+            let status = tokio::time::timeout(Duration::from_secs(5), async {
+                let _ = stderr.read_to_string(&mut err).await;
+                child.wait().await.ok().and_then(|s| s.code())
+            })
+            .await
+            .ok()
+            .flatten();
             if no_sh(&err) && !is_windows(target) {
                 return Err(RpcError::new("windows", "", "")); // dial picks the Windows line
             }

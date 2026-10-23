@@ -421,7 +421,9 @@ async fn hold(core: &Arc<Core>, m: &Machine, mut d: crate::machines::Dialed) {
             out.data(here, notice.as_bytes());
         });
     }
-    let _ = d.child.kill().await;
+    // Killed, not waited for: a Mac core once never heard the old ssh had
+    // died and stayed "connecting" for good. It is reaped in the background.
+    let _ = d.child.start_kill();
 }
 
 /// A machine's terminals now (after a connect, or after it says we missed

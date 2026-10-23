@@ -229,6 +229,9 @@ async fn templates_list(core: Ctx<'_>, _: Empty) -> Result<TemplatesResult, RpcE
 }
 
 async fn terminal_list(core: Ctx<'_>, p: ListParams) -> Result<ListResult, RpcError> {
+    // Asked from another machine: only ours. Two machines that added each
+    // other would otherwise ask each other back until the timeout.
+    let afar = from_afar(core);
     let (mut terminals, mut hidden_finished, machines) = {
         let mut st = core.lock();
         core.prune(&mut st);
@@ -241,7 +244,8 @@ async fn terminal_list(core: Ctx<'_>, p: ListParams) -> Result<ListResult, RpcEr
         let hidden = if p.all { 0 } else { matching.iter().filter(|t| !t.is_live()).count() };
         let terminals: Vec<serde_json::Value> =
             matching.into_iter().filter(|t| p.all || t.is_live()).cloned().map(|t| json!(Public(t))).collect();
-        (terminals, hidden, st.machines.clone())
+        let machines = if afar { Vec::new() } else { st.machines.clone() };
+        (terminals, hidden, machines)
     };
     // Each machine at once, each given a moment: a slow one never holds up the list.
     let asks: Vec<_> = machines

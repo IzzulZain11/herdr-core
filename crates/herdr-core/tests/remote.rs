@@ -92,6 +92,27 @@ fn addresses(list: &Value) -> Vec<String> {
 }
 
 #[test]
+fn two_machines_that_added_each_other_list_at_once() {
+    let (mut rohan, mut s) = (Session::new(), Session::new()); // s stops first: it would dial rohan back up
+    s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
+    rohan.env.push(fake_ssh(&rohan, &[("desk", &s)]));
+    // Each core started with its own way to the other.
+    let (here, there) = (run(&s, &["sleep", "100"]), run(&rohan, &["sleep", "100"]));
+    s.json(&["machine", "add", "rohan"]);
+    rohan.json(&["machine", "add", "desk"]);
+    let wants = [[format!("rohan/{there}"), here.clone()], [format!("desk/{here}"), there]];
+    for (s, want) in [&s, &rohan].into_iter().zip(wants) {
+        let started = std::time::Instant::now();
+        let list = s.json(&["ls"]);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "took {:?}", started.elapsed());
+        let mut got = addresses(&list);
+        got.sort();
+        assert_eq!(got, want, "each lists its own and the other's, nothing relayed back");
+    }
+    rohan.json(&["machine", "rm", "desk"]); // else it dials a stopped desk back up
+}
+
+#[test]
 fn terminals_on_another_machine_work_like_local_ones() {
     let (rohan, s) = with_rohan_env(&[("HC_TEST_SSH_DELAY", "0.4")]); // a login as slow as a real one
     let local = run(&s, &["sh", "-c", "sleep 100"]);
