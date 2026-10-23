@@ -48,10 +48,10 @@ pub(super) fn orders(terminals: &[Value]) -> Vec<(&'static str, Vec<Value>)> {
     fn need(t: &Value) -> u8 {
         match status(t).0.as_str() {
             "blocked" | "error" => 0,
-            "done" => 1,
-            "working" => 2,
-            "idle" => 3,
-            _ => 4,
+            "working" => 1,
+            // Done stays done after you looked (hc can't tell): no more urgent than idle.
+            "done" | "idle" => 2,
+            _ => 3,
         }
     }
     fn label(t: &Value) -> String {

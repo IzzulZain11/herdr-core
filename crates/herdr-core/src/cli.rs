@@ -883,7 +883,7 @@ mod tests {
             orders,
             [
                 ("recent", "t5 t1 t2 t4 t3".into()),
-                ("status", "t4 t2 t1 t5 t3".into()),
+                ("status", "t4 t1 t5 t2 t3".into()),
                 ("name", "t2 t5 t4 t3 t1".into()),
             ]
         );
