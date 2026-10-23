@@ -806,6 +806,16 @@
             "default": null,
             "description": "The program's own word for what it's doing (OSC 7501 root record);\nnull if it never said, or after it exited."
           },
+          "status_ms": {
+            "default": null,
+            "description": "When that word last changed, ms since the epoch; null if it never said.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "stop": {
             "type": [
               "string",
@@ -1251,6 +1261,16 @@
             ],
             "default": null,
             "description": "The program's own word for what it's doing (OSC 7501 root record);\nnull if it never said, or after it exited."
+          },
+          "status_ms": {
+            "default": null,
+            "description": "When that word last changed, ms since the epoch; null if it never said.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "stop": {
             "type": [
