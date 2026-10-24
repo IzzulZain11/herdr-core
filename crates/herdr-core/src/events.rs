@@ -26,6 +26,9 @@ pub struct Filter {
     /// Children of this terminal (`t3`).
     pub children_of: Option<String>,
     pub labels: BTreeMap<String, String>,
+    /// A core that dialed in: only what is here. What it hears from us it
+    /// passes on, so two machines that added each other would echo forever.
+    pub here_only: bool,
 }
 
 impl Filter {
@@ -67,7 +70,7 @@ impl Core {
     /// Terminals the filter matches: here, then those mirrored from machines.
     pub fn matching(&self, st: &State, filter: &Filter) -> Vec<Value> {
         let here = st.reg.terminals.values().map(record);
-        let afar = st.mirrors.values().flat_map(|m| m.values().cloned());
+        let afar = st.mirrors.values().filter(|_| !filter.here_only).flat_map(|m| m.values().cloned());
         here.chain(afar).filter(|r| filter.matches(r)).collect()
     }
 
@@ -127,6 +130,7 @@ impl Core {
     fn deliver_event(&self, st: &mut State, mut params: Value, record: &Value, was: Option<&Value>) {
         st.events.seq += 1;
         params["seq"] = st.events.seq.into();
+        let afar = params["machine"].is_string() || params["terminal"].as_str().is_some_and(|a| a.contains('/'));
         let plain = notification("event", params.clone());
         let with_record = || {
             let mut params = params.clone();
@@ -136,7 +140,7 @@ impl Core {
         let mut subs = std::mem::take(&mut st.events.subs);
         subs.retain(|sub| {
             let (now, before) = (sub.filter.matches(record), was.is_some_and(|w| sub.filter.matches(w)));
-            if !now && !before {
+            if (!now && !before) || (afar && sub.filter.here_only) {
                 return true;
             }
             let line = if now && was.is_some() && !before { with_record() } else { plain.clone() };
@@ -170,7 +174,7 @@ impl Core {
     pub fn documents_missed(&self, st: &mut State) {
         let mut subs = std::mem::take(&mut st.events.subs);
         subs.retain(|sub| {
-            if !sub.filter.matches(&Value::Null) {
+            if !sub.filter.matches(&Value::Null) || sub.filter.here_only {
                 return true;
             }
             let line = notification("missed", self.snapshot(st, &sub.filter));

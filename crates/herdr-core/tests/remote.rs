@@ -113,6 +113,32 @@ fn two_machines_that_added_each_other_list_at_once() {
 }
 
 #[test]
+fn two_machines_that_added_each_other_never_echo_events_back() {
+    let (mut rohan, mut s) = (Session::new(), Session::new()); // s stops first: it would dial rohan back up
+    s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
+    rohan.env.push(fake_ssh(&rohan, &[("desk", &s)]));
+    run(&s, &["sleep", "100"]);
+    run(&rohan, &["sleep", "100"]);
+    s.json(&["machine", "add", "rohan"]);
+    rohan.json(&["machine", "add", "desk"]);
+    wait_until("both connected", || {
+        [&s, &rohan].iter().all(|s| s.json(&["machine", "ls"])["machines"][0]["state"] == "connected")
+    });
+    let mut c = s.connect();
+    c.call(1, "events.subscribe", json!({}));
+    c.call(2, "doc.set", json!({"name": "app", "value": 1, "version": 0}));
+    // Two sleeping terminals and one document change: a handful of events, not a storm.
+    c.reader.get_ref().set_read_timeout(Some(std::time::Duration::from_millis(100))).unwrap();
+    let (started, mut events) = (std::time::Instant::now(), 0);
+    while started.elapsed() < std::time::Duration::from_secs(2) {
+        let mut line = String::new();
+        events += usize::from(std::io::BufRead::read_line(&mut c.reader, &mut line).is_ok_and(|n| n > 0));
+    }
+    assert!(events < 20, "{events} events in 2 s");
+    rohan.json(&["machine", "rm", "desk"]); // else it dials a stopped desk back up
+}
+
+#[test]
 fn terminals_on_another_machine_work_like_local_ones() {
     let (rohan, s) = with_rohan_env(&[("HC_TEST_SSH_DELAY", "0.4")]); // a login as slow as a real one
     let local = run(&s, &["sh", "-c", "sleep 100"]);
