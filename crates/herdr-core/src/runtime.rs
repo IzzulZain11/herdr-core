@@ -397,7 +397,10 @@ impl Core {
                 .and_then(|bytes| Screen::restore(&bytes, self.history_bytes()));
             let exact = saved.is_some();
             let mut screen = saved.unwrap_or_else(|| Screen::new(h.cols, h.rows, self.history_bytes()));
-            screen.write(&tail);
+            // Through a relay, like live output, so requests the screen doesn't keep are seen.
+            let mut relay = Relay::default();
+            relay.feed(&mut screen, &tail);
+            relay.flush(&mut screen);
             // After a handover the tail is new output nobody answered yet; after a
             // crash it was answered long ago and replies would be typed as garbage.
             let replies = screen.take_responses();
@@ -408,6 +411,9 @@ impl Core {
             let rec = st.reg.terminals.get_mut(&id).expect("live id");
             screen.set_xtversion(&rec.identity);
             rec.title = screen.title();
+            if let Some(on) = relay.win32_input {
+                rec.win32_input = on;
+            }
             // A crash tail repeats reports we already counted: take its final word,
             // but count at most the one turn that may have ended while we were down.
             let (turn, was, since) = (rec.turn, rec.status.as_ref().map(|s| s.state.clone()), rec.status_ms);

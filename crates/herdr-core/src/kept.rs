@@ -91,6 +91,7 @@ impl Core {
             t.reported = false;
             t.title.clear();
             t.full_screen = false;
+            t.win32_input = false;
             t.printed = 0;
             t.screen = "exact".into();
             t.submit = None;

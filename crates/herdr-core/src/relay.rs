@@ -19,6 +19,9 @@ pub struct Relay {
     held: Vec<u8>,
     /// Inside an APC: how many reply bytes were waiting when it began.
     apc: Option<usize>,
+    /// The program's latest win32-input-mode request (DEC 9001, ConPTY's ask
+    /// for key events), until taken. The screen doesn't keep it.
+    pub win32_input: Option<bool>,
 }
 
 enum Seq {
@@ -50,6 +53,9 @@ impl Relay {
                         out.extend_from_slice(&seq); // not answered here: the viewer may
                     }
                 } else {
+                    if let Some(on) = win32_input(&seq) {
+                        self.win32_input = Some(on);
+                    }
                     if seq == b"\x1b_" {
                         self.apc = Some(screen.pending_responses());
                     }
@@ -103,6 +109,17 @@ impl Relay {
             Some(_) => Seq::Done { maybe_query: false },
         }
     }
+}
+
+/// `CSI ? … 9001 … h` or `l`: whether it turns win32-input-mode on.
+fn win32_input(seq: &[u8]) -> Option<bool> {
+    let (last, params) = seq.strip_prefix(b"\x1b[?")?.split_last()?;
+    let on = match last {
+        b'h' => true,
+        b'l' => false,
+        _ => return None,
+    };
+    params.split(|b| *b == b';').any(|p| p == b"9001").then_some(on)
 }
 
 fn pass(screen: &mut Screen, out: &mut Vec<u8>, bytes: &[u8]) {

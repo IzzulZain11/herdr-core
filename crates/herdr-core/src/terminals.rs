@@ -103,6 +103,10 @@ pub struct Terminal {
     /// it has exited, nobody can scroll it back.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub full_screen: bool,
+    /// The program asked for win32-input-mode (ConPTY does, at start): a new
+    /// viewer must hear it too.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub win32_input: bool,
     /// The `HC_SCOPE` token everything it started carries, to end them all.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
@@ -285,6 +289,7 @@ impl Registry {
                 scope: None,
                 printed: 0,
                 full_screen: false,
+                win32_input: false,
                 seen_ms: None,
                 submit: new.template.as_ref().and_then(|t| t.submit.clone()),
                 stop: new.template.as_ref().and_then(|t| t.stop.clone()),
@@ -400,6 +405,7 @@ const PRIVATE: &[&str] = &[
     "holder",
     "printed",
     "full_screen",
+    "win32_input",
     "afar",
     "last_cwd",
     "restart_env",

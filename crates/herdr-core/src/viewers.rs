@@ -94,7 +94,9 @@ impl Core {
         let State { screens, relays, viewers, holders, output_watch, .. } = st;
         let holder = holders.iter().find(|l| Some(&l.instance) == instance.as_ref());
         let Some(screen) = screens.get_mut(&id) else { return };
-        let out = relays.entry(id).or_default().feed(screen, bytes);
+        let relay = relays.entry(id).or_default();
+        let out = relay.feed(screen, bytes);
+        let win32_input = relay.win32_input.take();
         if let Some(watchers) = output_watch.get_mut(&id).filter(|_| !scrolling) {
             watchers.retain(|w| w.send(out.clone()).is_ok());
         }
@@ -111,6 +113,13 @@ impl Core {
                     behind.push((v.conn.clone(), v.channel));
                 }
             });
+        }
+        // Before any repaint below, so it carries the mode this output just set.
+        if let Some(on) = win32_input
+            && let Some(t) = st.reg.terminals.get_mut(&id).filter(|t| t.win32_input != on)
+        {
+            t.win32_input = on;
+            self.save(st);
         }
         for (conn, channel) in behind {
             let paint = first_paint(st, id, 0); // too far behind: start over from now
@@ -264,11 +273,14 @@ impl Core {
     }
 }
 
-/// The screen, then the latest 7501 report of every record (they pass through
-/// to viewers, so a new one must see them too).
+/// The screen, then the latest 7501 report of every record and whether the
+/// program wants win32 key events (both pass through to viewers, so a new one
+/// must see them too; a viewer repainted after falling behind gets the mode
+/// either way).
 pub(crate) fn first_paint(st: &State, id: u32, history: usize) -> Vec<u8> {
     let mut paint = st.screens[&id].paint(history);
     let t = &st.reg.terminals[&id];
+    paint.extend(if t.win32_input { b"\x1b[?9001h" } else { b"\x1b[?9001l" });
     let root = t.status.iter().map(|s| ("", s));
     for (rid, status) in root.chain(t.records.iter().map(|(k, s)| (k.as_str(), s))) {
         paint.extend(status.encode(rid).as_bytes());

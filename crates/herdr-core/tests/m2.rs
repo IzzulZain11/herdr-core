@@ -35,6 +35,43 @@ fn first_paint_then_live_bytes_and_typing() {
 }
 
 #[test]
+fn a_late_viewer_gets_the_win32_input_request_the_program_made_at_start() {
+    // ConPTY asks its viewer for win32-input-mode once, at start; the screen can't hold that.
+    let s = Session::new();
+    let off = s.root.join("off");
+    let program = after_go(
+        &s,
+        &format!(
+            "printf '\\033[?9001h'; echo asked; while [ ! -e {} ]; do sleep 0.02; done; \
+             printf '\\033[?9001l'; echo released; sleep 100",
+            off.display()
+        ),
+    );
+    let t = run(&s, &["sh", "-c", &program]);
+    let mode = |seen: &str| {
+        let mut v = Viewer::attach(&s, &t, 80, 24, json!({}));
+        v.shows(seen);
+        let raw = String::from_utf8_lossy(&v.raw).into_owned();
+        raw.rfind("\x1b[?9001").and_then(|at| raw[at + 7..].chars().next())
+    };
+    go(&s);
+    wait_until("asked", || s.json(&["read", &t])["text"].as_str().unwrap().contains("asked"));
+    assert_eq!(mode("asked"), Some('h'));
+    s.json(&["server", "restart"]);
+    assert_eq!(mode("asked"), Some('h'), "a restart keeps it");
+    // Turned off while no core runs: the next one learns it from what it missed.
+    let core = s.json(&["server", "status"])["pid"].as_i64().unwrap();
+    unsafe {
+        libc::kill(core as i32, libc::SIGKILL);
+    }
+    wait_until("core gone", || !s.connect_ok());
+    std::fs::write(&off, "").unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    wait_until("released", || s.json(&["read", &t])["text"].as_str().unwrap().contains("released"));
+    assert_eq!(mode("released"), Some('l'));
+}
+
+#[test]
 fn queries_are_answered_once_by_the_core_with_the_viewers_colors() {
     let s = Session::new();
     // Prints the raw replies it got to DA1 and a background color query.
