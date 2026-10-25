@@ -1,26 +1,51 @@
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+
 # Format, clippy here and for Windows, the whole suite: what CI runs on Linux.
-check: lint
+check: lint test
+
+[unix]
+test:
+    cargo test --locked
+
+# Windows' own ConPTY swallows answers to programs: hc's tests need the one it ships.
+[windows]
+test:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-conpty.ps1 -Dest target/debug
     cargo test --locked
 
 # Format and clippy only (seconds once built). Windows is type-checked with zig stubbed.
+[unix]
 lint:
     cargo fmt --all -- --check
     cargo deny check
     cargo clippy --locked --all-targets -- -D warnings
     ZIG="$PWD/scripts/zig-stub.sh" CARGO_TARGET_DIR=target/lint-windows cargo clippy --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
 
+[windows]
+lint:
+    cargo fmt --all -- --check
+    cargo deny check
+    cargo clippy --locked --all-targets -- -D warnings
+
 fmt:
     cargo fmt --all
 
 # After a dependency change: the licenses hc carries (`hc --licenses`).
+[unix]
 notices:
     scripts/notices
 
-# Build and install this checkout as ~/.local/bin/hc; running terminals are kept.
+# Build and install this checkout; running terminals are kept.
+[unix]
 install:
     sh scripts/install-local.sh
 
+[windows]
+install:
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-local.ps1
+
 # Bump the version, refresh the schema snapshots, commit. Tags nothing.
+[unix]
 release-prepare version:
     @printf '%s\n' "{{version}}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "error: version must look like 0.1.5, no v"; exit 1; }
     @[ -z "$(git status --porcelain)" ] || { echo "error: working tree must be clean"; exit 1; }
@@ -37,6 +62,7 @@ release-prepare version:
     @echo "v{{version}} prepared. Review it, then: just release-publish {{version}}"
 
 # Push master, wait for its CI to pass, then push the tag (starts the release). Red CI publishes nothing.
+[unix]
 release-publish version:
     @[ -z "$(git status --porcelain)" ] || { echo "error: working tree must be clean"; exit 1; }
     @grep -q '^version = "{{version}}"' crates/herdr-core/Cargo.toml || { echo "error: this checkout is not {{version}}; run just release-prepare {{version}}"; exit 1; }

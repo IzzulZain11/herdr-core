@@ -52,7 +52,7 @@ Ghostty submodule:
 ```sh
 git submodule update --init --depth 1
 just check     # format, clippy (here and for Windows), the whole suite
-just install   # this build as ~/.local/bin/hc
+just install   # this build as hc (Windows: where install.ps1 puts it); terminals keep running
 ```
 
 License: Apache-2.0. `hc --licenses` prints the licenses of everything hc
