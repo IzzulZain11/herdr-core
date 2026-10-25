@@ -178,12 +178,19 @@ fn paused_replacement() -> (Session, String, PausedHolder) {
         libc::kill(holder, libc::SIGSTOP);
     }
     let holder = PausedHolder(holder);
-    wait_until("replacement claimed", || {
+    // The claim comes after two failed tries' backoff (1.5 s + 3 s) and a 1 s tick:
+    // about 5 s here, past wait_until's 10 s on a slow runner.
+    let claimed = || {
         let state: serde_json::Value =
             serde_json::from_slice(&std::fs::read(s.root.join("state/herdr-core/test/terminals.json")).unwrap())
                 .unwrap();
         state["terminals"]["1"]["holder"].is_string()
-    });
+    };
+    let start = std::time::Instant::now();
+    while !claimed() {
+        assert!(start.elapsed() < std::time::Duration::from_secs(30), "timed out waiting for replacement claimed");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     (s, t, holder)
 }
 
