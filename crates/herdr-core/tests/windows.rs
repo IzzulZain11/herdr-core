@@ -511,16 +511,19 @@ fn the_folder_a_shell_moves_to_is_seen_and_a_lost_kept_shell_returns_there() {
     let dir = s.root.join("moved here");
     std::fs::create_dir(&dir).unwrap();
     let dir = dir.display().to_string();
-    let cwd = |t: &str| s.json(&["get", t])["foreground"]["cwd"].as_str().unwrap_or_default().to_string();
+    // TEMP may use an 8.3 name; PowerShell expands it to the same folder's long name.
+    let expected = std::fs::canonicalize(&dir).unwrap();
+    let cwd =
+        |t: &str| std::fs::canonicalize(s.json(&["get", t])["foreground"]["cwd"].as_str().unwrap_or_default()).ok();
 
     let cmd = s.bg(&["cmd.exe"]);
     s.out(&["send", &cmd, &format!("cd /d \"{dir}\"")]);
-    wait_until("cmd's folder", || cwd(&cmd) == dir);
+    wait_until("cmd's folder", || cwd(&cmd).as_ref() == Some(&expected));
 
     // PowerShell keeps its location to itself: hc's own shell tells Windows.
     let shell = s.bg(&["--keep"]);
     s.out(&["send", &shell, &format!("Set-Location '{dir}'")]);
-    wait_until("PowerShell's folder", || cwd(&shell) == dir);
+    wait_until("PowerShell's folder", || cwd(&shell).as_ref() == Some(&expected));
 
     let old = s.json(&["get", &shell])["pid"].as_u64().unwrap();
     let holder = s.json(&["server", "status"])["holder"]["pid"].as_u64().unwrap();
@@ -529,7 +532,7 @@ fn the_folder_a_shell_moves_to_is_seen_and_a_lost_kept_shell_returns_there() {
         let r = s.json(&["get", &shell]);
         r["state"] == "live" && r["pid"].as_u64().is_some_and(|p| p != old)
     });
-    assert_eq!(s.json(&["get", &shell])["cwd"], dir.as_str());
+    assert_eq!(std::fs::canonicalize(s.json(&["get", &shell])["cwd"].as_str().unwrap()).unwrap(), expected);
 }
 
 #[test]
