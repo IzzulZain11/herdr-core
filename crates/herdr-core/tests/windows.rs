@@ -482,6 +482,33 @@ fn restart_and_a_core_crash_keep_terminals_and_stop_leaves_nothing() {
 }
 
 #[test]
+fn the_folder_a_shell_moves_to_is_seen_and_a_lost_kept_shell_returns_there() {
+    let s = Session::new();
+    let dir = s.root.join("moved here");
+    std::fs::create_dir(&dir).unwrap();
+    let dir = dir.display().to_string();
+    let cwd = |t: &str| s.json(&["get", t])["foreground"]["cwd"].as_str().unwrap_or_default().to_string();
+
+    let cmd = s.bg(&["cmd.exe"]);
+    s.out(&["send", &cmd, &format!("cd /d \"{dir}\"")]);
+    wait_until("cmd's folder", || cwd(&cmd) == dir);
+
+    // PowerShell keeps its location to itself: hc's own shell tells Windows.
+    let shell = s.bg(&["--keep"]);
+    s.out(&["send", &shell, &format!("Set-Location '{dir}'")]);
+    wait_until("PowerShell's folder", || cwd(&shell) == dir);
+
+    let old = s.json(&["get", &shell])["pid"].as_u64().unwrap();
+    let holder = s.json(&["server", "status"])["holder"]["pid"].as_u64().unwrap();
+    Command::new("taskkill").args(["/F", "/PID", &holder.to_string()]).output().unwrap();
+    wait_until("replacement shell", || {
+        let r = s.json(&["get", &shell]);
+        r["state"] == "live" && r["pid"].as_u64().is_some_and(|p| p != old)
+    });
+    assert_eq!(s.json(&["get", &shell])["cwd"], dir.as_str());
+}
+
+#[test]
 fn programs_get_the_cores_answers_to_their_questions() {
     let conpty = Path::new(BIN).parent().unwrap().join(r"conpty\conpty.dll");
     assert!(

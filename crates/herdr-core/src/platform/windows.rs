@@ -733,6 +733,7 @@ pub struct Pty {
     input: File,
     output: File,
     job: OwnedHandle,
+    pid: u32,
 }
 
 pub struct Process {
@@ -970,7 +971,7 @@ pub fn spawn_pty(
         // The console holds its own ends now.
         drop((in_r, out_w));
         let process = Process { pid: pi.dwProcessId, handle, console: console.clone() };
-        Ok((Pty { console, input, output, job }, process))
+        Ok((Pty { console, input, output, job, pid: pi.dwProcessId }, process))
     }
 }
 
@@ -991,9 +992,9 @@ impl Pty {
         }
     }
 
-    /// No process groups on a pseudo console.
+    /// No process groups on a pseudo console: the program it started.
     pub fn foreground(&self) -> i32 {
-        -1
+        self.pid as i32
     }
 
     /// Ctrl+C through the console for an interrupt; anything harder ends the
