@@ -363,6 +363,20 @@ fn losing_the_holder_finishes_everything() {
 }
 
 #[test]
+fn a_turn_that_starts_and_ends_in_one_burst_survives_losing_the_holder() {
+    let s = Session::new();
+    // Idle before and after: only the reports in between show the turn.
+    let burst = r"printf '\033]7501;state=idle\033\\'; sleep 0.3
+        printf '\033]7501;state=working\033\\\033]7501;state=done\033\\\033]7501;state=idle\033\\'; sleep 100";
+    let t = run(&s, &["sh", "-c", burst]);
+    wait_until("the turn", || get(&s, &t)["turn"] == 1);
+    let (core, holder) = (status(&s)["pid"].as_i64().unwrap(), holder_pid(&s));
+    kill9(core);
+    kill9(holder);
+    assert_eq!(get(&s, &t)["turn"], 1);
+}
+
+#[test]
 fn holder_restarts_a_crashed_core_even_after_an_update() {
     let mut s = Session::new();
     s.env.push(("HC_HOLDER_GRACE_MS".into(), "100".into()));
@@ -413,4 +427,17 @@ fn an_update_rolls_new_terminals_onto_a_new_holder_while_the_old_one_drains() {
 
 fn holder_pid(s: &Session) -> i64 {
     status(s)["holder"]["pid"].as_i64().unwrap()
+}
+
+#[test]
+fn title_changes_are_saved_shortly_after_not_right_away() {
+    let s = Session::new();
+    let t = run(&s, &["sh", "-c", "for i in 1 2 3 4 5 6 7 8 9; do printf '\\033]2;spin %s\\007' $i; done; sleep 100"]);
+    wait_until("last title", || get(&s, &t)["title"] == "spin 9");
+    let saved = || {
+        let file = std::fs::read(s.root.join("state/herdr-core/test/terminals.json")).unwrap();
+        serde_json::from_slice::<Value>(&file).unwrap()["terminals"]["1"]["title"].clone()
+    };
+    assert_eq!(saved(), "", "saved on a title change");
+    wait_until("title saved", || saved() == "spin 9");
 }

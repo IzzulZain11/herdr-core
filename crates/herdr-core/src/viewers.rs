@@ -126,19 +126,25 @@ impl Core {
         }
         if let Some(title) = title {
             st.reg.terminals.get_mut(&id).expect("live terminal").title = title.clone();
-            self.save(st);
+            self.save_soon();
             self.emit(st, "title", id, serde_json::json!({"title": title}));
         }
     }
 
     /// Applies 7501 reports and tells subscribers what changed.
     pub fn report_status(&self, st: &mut State, id: u32, reports: &[ghostty_vt::StatusReport]) {
+        let word = |st: &State| st.reg.terminals[&id].status.as_ref().map(|s| s.state.clone());
+        let mut word_changed = false;
         for r in reports {
+            let was = word(st);
             let t = st.reg.terminals.get_mut(&id).expect("live terminal");
             let change = crate::status::apply(t, r);
             self.status_changed(st, id, change);
+            word_changed |= word(st) != was;
         }
-        self.save(st);
+        // Losing the holder too (a reboot) leaves no tail to replay: a new word, and
+        // with it a turn or news, must already be on disk. Messages and progress can wait.
+        if word_changed { self.save(st) } else { self.save_soon() }
     }
 
     pub fn status_changed(&self, st: &mut State, id: u32, change: crate::status::Change) {
@@ -253,7 +259,7 @@ impl Core {
         if let Some(link) = st.link(id) {
             link.send(&proto::json_frame(proto::RESIZE, id, &proto::Size { cols, rows }));
         }
-        self.save(st);
+        self.save_soon();
         self.emit(st, "size", id, serde_json::json!({"cols": cols, "rows": rows}));
     }
 }

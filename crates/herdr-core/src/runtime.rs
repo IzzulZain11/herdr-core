@@ -34,6 +34,9 @@ pub struct Core {
     pub(crate) sweeps: Arc<std::sync::atomic::AtomicUsize>,
     /// Holder startup and goodbye cannot cross, or a stop could leave a new holder behind.
     holder_start: Mutex<()>,
+    /// The registry changed in a way a crash may lose: `save_soon` writes it shortly.
+    dirty: std::sync::atomic::AtomicBool,
+    save_due: Notify,
 }
 
 #[derive(Default)]
@@ -127,6 +130,8 @@ impl Link {
     }
 }
 
+const SAVE_SOON: Duration = Duration::from_secs(2);
+
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
@@ -170,6 +175,8 @@ impl Core {
             jobs_rx: Mutex::new(Some(jobs_rx)),
             sweeps: Default::default(),
             holder_start: Default::default(),
+            dirty: Default::default(),
+            save_due: Notify::new(),
         });
         core.attach_all()?;
         Ok(core)
@@ -198,9 +205,29 @@ impl Core {
     }
 
     pub fn save(&self, st: &State) {
+        self.dirty.store(false, std::sync::atomic::Ordering::SeqCst);
         let bytes = serde_json::to_vec(&st.reg).expect("registry serializes");
         if let Err(e) = write_atomic(&self.paths.state.join("terminals.json"), &bytes) {
             eprintln!("core: cannot save terminals: {e}");
+        }
+    }
+
+    /// For frequent changes a crash may lose (the next start rebuilds them):
+    /// saved within `SAVE_SOON`, once for a burst. Call with the lock held.
+    pub fn save_soon(&self) {
+        if !self.dirty.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            self.save_due.notify_one();
+        }
+    }
+
+    pub async fn save_when_due(self: Arc<Self>) {
+        loop {
+            self.save_due.notified().await;
+            tokio::time::sleep(SAVE_SOON).await;
+            let st = self.lock();
+            if self.dirty.load(std::sync::atomic::Ordering::SeqCst) {
+                self.save(&st);
+            }
         }
     }
 

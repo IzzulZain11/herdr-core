@@ -102,7 +102,7 @@ impl Core {
                     t.last_cwd = Some(f.cwd.clone());
                 }
                 t.foreground = now.clone();
-                self.save(&st);
+                self.save_soon();
                 self.emit(&mut st, "foreground", id, serde_json::to_value(&now).unwrap_or_default());
             }
         }
