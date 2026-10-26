@@ -218,7 +218,7 @@ pub(crate) fn child_env(base: BTreeMap<String, String>, extra: BTreeMap<String, 
                 && !["HC_TERMINAL_ID", crate::sweep::VAR, crate::sweep::RUNTIME].contains(&k.as_str())
         })
         .collect();
-    env.extend(extra);
+    crate::platform::merge_env(&mut env, extra);
     if let Ok(session) = std::env::var("HC_SESSION") {
         env.insert("HC_SESSION".into(), session);
     }

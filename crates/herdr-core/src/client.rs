@@ -71,14 +71,33 @@ pub fn connect_existing(paths: &Paths) -> Option<Stream> {
 
 /// Connects to this session's core, starting it if nobody is listening.
 pub fn connect_or_start(paths: &Paths) -> Result<Stream, RpcError> {
-    if let Some(stream) = connect_existing(paths) {
-        return Ok(stream);
+    connect_starting(paths, false)
+}
+
+pub fn connect_or_start_explicit(paths: &Paths) -> Result<Stream, RpcError> {
+    connect_starting(paths, true)
+}
+
+fn connect_starting(paths: &Paths, explicit: bool) -> Result<Stream, RpcError> {
+    match platform::connect(&paths.socket) {
+        Ok(stream) => return Ok(stream),
+        Err(e) => {
+            if let Some(error) = platform::connect_error(&e, false) {
+                return Err(error);
+            }
+        }
     }
     if let Some(err) = listening_elsewhere(paths) {
         return Err(err);
     }
+    platform::may_autostart(explicit)?;
     spawn_core(paths)?;
     wait_for_socket(&paths.socket, "core").map_err(unavailable)
+}
+
+pub fn require_existing(paths: &Paths) -> Result<Stream, RpcError> {
+    platform::connect(&paths.socket)
+        .map_err(|e| platform::connect_error(&e, true).unwrap_or_else(|| unavailable(e.to_string())))
 }
 
 /// This session's core runs, but on a socket this env doesn't point at.

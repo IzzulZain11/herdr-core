@@ -236,6 +236,37 @@ pub struct Listener {
     next: std::sync::Mutex<Option<Pipe>>,
 }
 
+pub fn may_autostart(explicit: bool) -> Result<(), crate::rpc::RpcError> {
+    if explicit { Ok(()) } else { super::windows_session::check_autostart() }
+}
+
+pub fn status_may_start_core() -> bool {
+    false
+}
+
+pub fn connect_error(error: &io::Error, existing_only: bool) -> Option<crate::rpc::RpcError> {
+    if error.kind() == io::ErrorKind::PermissionDenied {
+        Some(crate::rpc::RpcError::new(
+            "unavailable",
+            format!("the Windows core exists but this process cannot access its pipe: {error}"),
+            "if it was started elevated or over SSH, stop it with 'hc server stop' in an elevated terminal on that Windows machine, then open Herdr or run 'hc server start' in a normal desktop terminal",
+        ))
+    } else if existing_only {
+        Some(crate::rpc::RpcError::new(
+            "unavailable",
+            format!("the Windows core is not reachable: {error}"),
+            "open Herdr on that Windows machine, or run 'hc server start' there",
+        ))
+    } else {
+        None
+    }
+}
+
+pub fn merge_env(env: &mut BTreeMap<String, String>, extra: BTreeMap<String, String>) {
+    env.retain(|key, _| !extra.keys().any(|other| key.eq_ignore_ascii_case(other)));
+    env.extend(extra);
+}
+
 pub fn listen(path: &Path) -> io::Result<Listener> {
     let name = wide(path.as_os_str());
     let first = new_instance(&name, true)?;

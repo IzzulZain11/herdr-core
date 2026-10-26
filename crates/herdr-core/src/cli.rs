@@ -548,7 +548,16 @@ fn run(cmd: Option<Cmd>, json: bool, asked: bool) -> Result<Option<Out>, RpcErro
                 client::call(&stream, "server.restart", json!({}))?;
                 wait_closed(&stream);
             }
-            let r = call("server.status", json!({}))?;
+            let r = if crate::platform::status_may_start_core() {
+                call("server.status", json!({}))?
+            } else {
+                let stream = if matches!(action, ServerCmd::Status) {
+                    client::require_existing(&paths)?
+                } else {
+                    client::connect_or_start_explicit(&paths)?
+                };
+                client::call(&stream, "server.status", json!({}))?
+            };
             let id = r["core"]["id"].as_str().unwrap_or("?");
             let human = format!(
                 "core {} ({}) running, pid {}, up {}s",

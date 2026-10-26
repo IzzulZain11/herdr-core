@@ -18,6 +18,10 @@ pub use windows::*;
 mod windows_exec;
 #[cfg(windows)]
 pub use windows_exec::*;
+#[cfg(windows)]
+mod windows_env;
+#[cfg(windows)]
+mod windows_session;
 
 /// Whether Windows is ending this session, including logout.
 pub fn host_shutdown_in_progress() -> bool {
@@ -52,6 +56,17 @@ pub async fn program_env() -> std::collections::BTreeMap<String, String> {
         if let Ok(Some(manager)) = tokio::task::spawn_blocking(systemd::manager_env).await {
             systemd::apply_session(&mut env, &manager);
         }
+    }
+    #[cfg(windows)]
+    {
+        env = tokio::task::spawn_blocking(move || {
+            if let Err(error) = windows_env::refresh(&mut env) {
+                eprintln!("cannot refresh Windows environment; using inherited settings: {error}");
+            }
+            env
+        })
+        .await
+        .expect("environment reader panicked");
     }
     env.retain(|k, _| !SSH_LOGIN.contains(&k.as_str()));
     env

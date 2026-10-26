@@ -127,6 +127,12 @@ Your harness's own file tools touch only the machine you run on. Use hc for
 remote files and commands. `hc machine ls` lists configured machines; see
 `hc machine --help` to configure SSH or `--via <cmd>` connections.
 
+On Windows, `hc server status` never starts a core. If elevated SSH startup
+would block the same user's desktop session, open Herdr on that Windows
+machine or run `hc server start` in a normal desktop terminal, then reconnect.
+Headless Windows machines can still start their core over SSH.
+New Windows terminals refresh user/system environment settings, including PATH.
+
 ```sh
 hc run --on vps --cwd /srv/app cargo test    # returns vps/t3; use that full address
 hc run --bg --on vps --cwd /srv/app cargo build

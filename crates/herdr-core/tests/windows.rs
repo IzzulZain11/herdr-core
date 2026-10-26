@@ -116,7 +116,9 @@ fn cmd_at(exe: &Path, session: &str, root: &Path) -> Command {
         .env("HC_SETTLE_MS", "0")
         .env_remove("HC_TERMINAL_ID")
         .env_remove("HC_SOCKET")
-        .env_remove("SSH_CONNECTION");
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY");
     cmd
 }
 
@@ -138,7 +140,7 @@ fn sessions_select_distinct_pipes_even_with_the_same_state_home() {
     let a = Session::new();
     let b = Session::new();
     let status = |name: &str| {
-        let out = cmd(name, &a.root).args(["server", "status"]).output().unwrap();
+        let out = cmd(name, &a.root).args(["server", "start"]).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         serde_json::from_slice::<Value>(&out.stdout).unwrap()
     };
@@ -371,6 +373,99 @@ fn only_this_account_may_open_the_cores_pipe() {
 }
 
 #[test]
+fn status_does_not_start_a_core() {
+    let s = Session::new();
+    let out = cmd(&s.name, &s.root).args(["server", "status"]).output().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("hc server start"));
+    assert!(!s.root.join("state").exists(), "status created runtime state");
+}
+
+#[test]
+fn new_terminals_refresh_windows_settings_without_losing_runtime_variables() {
+    let s = Session::new();
+    let out = cmd(&s.name, &s.root)
+        .env("PATH", r"C:\Windows\System32;HC_STALE_PATH")
+        .env("HC_PROCESS_ONLY", "preserved")
+        .args(["server", "start"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let (code, output) =
+        s.out(&["run", "--timeout", "20", "cmd", "/c", "echo %PATH% & echo %HC_PROCESS_ONLY% & echo %HC_SESSION%"]);
+    assert_eq!(code, 0, "{output}");
+    assert!(!output.contains("HC_STALE_PATH"), "{output}");
+    assert!(output.contains("preserved"), "{output}");
+    assert!(output.contains(&s.name), "{output}");
+}
+
+#[test]
+fn an_ssh_client_uses_an_existing_core_instead_of_starting_another() {
+    let s = Session::new();
+    let first = s.json(&["server", "start"]);
+    let out = cmd(&s.name, &s.root).env("SSH_CONNECTION", "10.0.0.1 50000 10.0.0.2 22").args(["ls"]).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(s.json(&["server", "status"])["pid"], first["pid"]);
+}
+
+#[test]
+fn implicit_ssh_start_reports_desktop_conflict_or_starts_headless() {
+    let s = Session::new();
+    let out = cmd(&s.name, &s.root).env("SSH_CLIENT", "10.0.0.1 50000 22").args(["ls"]).output().unwrap();
+    if out.status.success() {
+        assert!(s.json(&["server", "status"])["pid"].is_number());
+    } else {
+        let error: Value = serde_json::from_slice(&out.stderr).unwrap();
+        assert!(error["error"]["message"].as_str().unwrap().contains("desktop session"), "{error}");
+        assert!(error["error"]["hint"].as_str().unwrap().contains("open Herdr on that Windows machine"), "{error}");
+        assert_ne!(s.out(&["server", "status"]).0, 0, "refused startup left a core");
+    }
+}
+
+#[test]
+fn explicit_start_is_allowed_even_from_an_ssh_client() {
+    let s = Session::new();
+    // SSH_CLIENT triggers startup policy without the distinct kill-on-close job guard.
+    let out = cmd(&s.name, &s.root).env("SSH_CLIENT", "10.0.0.1 50000 22").args(["server", "start"]).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
+fn registry_changes_after_start_are_seen_by_each_new_terminal() {
+    struct Setting(String);
+    impl Setting {
+        fn set(&self, value: Option<&str>) {
+            let script = match value {
+                Some(value) => format!(
+                    "$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true); $k.SetValue('{}', '{}', [Microsoft.Win32.RegistryValueKind]::ExpandString); $k.Close()",
+                    self.0, value
+                ),
+                None => format!(
+                    "$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true); $k.DeleteValue('{}', $false); $k.Close()",
+                    self.0
+                ),
+            };
+            assert!(Command::new("powershell").args(["-NoProfile", "-Command", &script]).status().unwrap().success());
+        }
+    }
+    impl Drop for Setting {
+        fn drop(&mut self) {
+            self.set(None);
+        }
+    }
+    let s = Session::new();
+    let setting = Setting(format!("HC_ENV_{}", s.name.replace('-', "_")));
+    s.json(&["server", "start"]);
+    for value in ["first", "second"] {
+        setting.set(Some(&format!("%SystemRoot%\\{value}")));
+        let (code, output) = s.out(&["run", "--timeout", "20", "cmd", "/c", &format!("echo %{}%", setting.0)]);
+        assert_eq!(code, 0, "{output}");
+        assert!(output.contains(&format!("{}\\{value}", std::env::var("SystemRoot").unwrap())), "{output}");
+        assert!(!output.contains("%SystemRoot%"), "REG_EXPAND_SZ was not expanded: {output}");
+    }
+}
+
+#[test]
 fn a_core_that_would_die_at_ssh_logout_is_refused_not_started() {
     // Cargo's job kills on close and won't let hc leave, like some ssh
     // sessions: there, logging out would end every terminal.
@@ -378,7 +473,7 @@ fn a_core_that_would_die_at_ssh_logout_is_refused_not_started() {
     let out = cmd(&s.name, &s.root).env("SSH_CONNECTION", "10.0.0.1 50000 10.0.0.2 22").args(["ls"]).output().unwrap();
     let err = String::from_utf8_lossy(&out.stderr);
     assert_ne!(out.status.code(), Some(0));
-    assert!(err.contains("log out"), "{err}");
+    assert!(err.contains("log out") || err.contains("desktop session"), "{err}");
 }
 
 #[test]

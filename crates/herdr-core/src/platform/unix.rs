@@ -17,6 +17,25 @@ pub fn connect(path: &Path) -> io::Result<Stream> {
     Stream::connect(path)
 }
 
+pub fn may_autostart(_explicit: bool) -> Result<(), crate::rpc::RpcError> {
+    Ok(())
+}
+
+pub fn status_may_start_core() -> bool {
+    true
+}
+
+pub fn connect_error(_error: &io::Error, _existing_only: bool) -> Option<crate::rpc::RpcError> {
+    None
+}
+
+pub fn merge_env(
+    env: &mut std::collections::BTreeMap<String, String>,
+    extra: std::collections::BTreeMap<String, String>,
+) {
+    env.extend(extra);
+}
+
 pub fn listen(path: &Path) -> io::Result<Listener> {
     Listener::bind(path)
 }
