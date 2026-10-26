@@ -74,4 +74,4 @@ case ":$PATH:" in
   *":$bin:"*) ;;
   *) say "Add $bin to your PATH to use hc." ;;
 esac
-say "Agents: hc --agent-help. People: hc --help."
+say "Agents: hc --skill. People: hc --help."

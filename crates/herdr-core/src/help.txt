@@ -54,4 +54,4 @@ Examples
   hc attach t3                             take it over
   hc run reviewer "review src/x.rs"        a template with a task
 
-Agent? Run: hc --agent-help
+Agent? Run: hc --skill

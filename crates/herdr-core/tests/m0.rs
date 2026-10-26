@@ -162,16 +162,24 @@ fn help_is_for_people_and_points_agents_to_their_own() {
     let s = Session::new();
     let out = |args: &[&str]| String::from_utf8(s.hc(args).stdout).unwrap();
     let help = out(&["--help"]);
-    assert!(help.trim_end().ends_with("Agent? Run: hc --agent-help"), "{help}");
+    assert!(help.trim_end().ends_with("Agent? Run: hc --skill"), "{help}");
     assert_eq!(out(&["help"]), help);
     assert_eq!(out(&["-h"]), help);
-    let agent = out(&["--agent-help"]);
-    assert!(agent.len() < 5_000, "agent help grew to {} bytes", agent.len());
-    let names = |text: &str, name: &str| text.contains(&format!(" {name} ")) || text.contains(&format!(" {name}\n"));
+    let agent = out(&["--skill"]);
+    assert!(agent.lines().count() < 500, "skill must stay under 500 lines");
+    let mut lines = agent.lines();
+    assert_eq!(lines.next(), Some("---"));
+    assert_eq!(lines.next(), Some("name: hc"));
+    let description = lines.next().unwrap().strip_prefix("description: ").unwrap();
+    let description: String = serde_json::from_str(description).expect("quoted YAML description");
+    assert!(!description.is_empty() && description.chars().count() < 1024);
+    assert_eq!(lines.next(), Some("---"));
+    let names =
+        |text: &str, name: &str| text.split(|c: char| !c.is_ascii_alphanumeric() && c != '-').any(|word| word == name);
     let for_people = ["events", "connect", "server", "schema", "update"];
     for name in herdr_core::cli::command_names() {
         assert!(names(&help, &name), "help misses `{name}`");
-        assert!(for_people.contains(&name.as_str()) || names(&agent, &name), "agent help misses `{name}`");
+        assert!(for_people.contains(&name.as_str()) || names(&agent, &name), "skill misses `{name}`");
     }
     // Per-command help is still there.
     assert!(String::from_utf8(s.hc(&["run", "--help"]).stdout).unwrap().contains("--die-with-parent"));

@@ -124,7 +124,7 @@ enum ServerCmd {
 }
 
 const HELP: &str = include_str!("help.txt");
-const AGENT_HELP: &str = include_str!("agent-help.txt");
+const SKILL: &str = include_str!("SKILL.md");
 
 /// Every command a person or agent can type (for checking the help names them all).
 pub fn command_names() -> Vec<String> {
@@ -144,8 +144,8 @@ pub fn main() -> i32 {
             print!("{HELP}");
             return 0;
         }
-        ["--agent-help"] => {
-            print!("{AGENT_HELP}");
+        ["--skill"] => {
+            print!("{SKILL}");
             return 0;
         }
         ["--licenses"] => {
@@ -266,7 +266,7 @@ fn bare(paths: &Paths, json: bool) -> Result<Option<Out>, RpcError> {
     let list = call(paths, "terminal.list", json!({}))?;
     if !interactive(json) {
         let mut r = list;
-        r["commands"] = json!(["hc run <cmd>", "hc ls", "hc read <t>", "hc attach <t>", "hc --agent-help"]);
+        r["commands"] = json!(["hc run <cmd>", "hc ls", "hc read <t>", "hc attach <t>", "hc --skill"]);
         let human = table(&r);
         return Ok(Some(Out { json: r, human }));
     }

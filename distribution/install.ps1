@@ -91,7 +91,7 @@ try {
     }
     $key.Close()
     if (($env:Path -split ";") -notcontains $dir) { $env:Path += ";$dir" }
-    Write-Host "Agents: hc --agent-help. People: hc --help."
+    Write-Host "Agents: hc --skill. People: hc --help."
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
     if ($zip) { Remove-Item -Force $zip, $PSCommandPath -ErrorAction SilentlyContinue }
