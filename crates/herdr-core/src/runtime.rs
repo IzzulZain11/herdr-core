@@ -403,7 +403,7 @@ impl Core {
             relay.flush(&mut screen);
             // After a handover the tail is new output nobody answered yet; after a
             // crash it was answered long ago and replies would be typed as garbage.
-            let replies = screen.take_responses();
+            let replies = Relay::take_responses(&mut screen);
             if exact && let Some(link) = st.link(id) {
                 link.input(id, &replies);
             }

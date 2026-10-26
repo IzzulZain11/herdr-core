@@ -159,6 +159,8 @@ paths start at your current folder. Prefer explicit paths for remote work.
   Pending input/attach may be unavailable: retry after recovery.
 - Once work is accepted: `hc kill <t>`, then `hc rm <t>`. Only clean up
   terminals you started; `hc ls` includes your user's other live work.
+- `hc update` also restarts an older running core when the installed binary
+  is already current. JSON reports `restarted: true`; terminals keep running.
 - Never `hc server stop` or restart the user's core unless asked. It affects
   every terminal. Tests need their own `HC_SESSION` and scratch XDG paths.
 - Errors are `{error: {kind, message, hint}}` on stderr. Exit codes include

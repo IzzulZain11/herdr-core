@@ -30,6 +30,26 @@ enum Seq {
 }
 
 impl Relay {
+    /// In-band resize belongs to the viewer, which knows the pixel geometry.
+    /// Ghostty also emits it when 2048 is enabled and when its screen resizes.
+    pub fn take_responses(screen: &mut Screen) -> Vec<u8> {
+        let replies = screen.take_responses();
+        let mut out = Vec::with_capacity(replies.len());
+        let mut i = 0;
+        while i < replies.len() {
+            if let Some(rest) = replies[i..].strip_prefix(b"\x1b[48;") {
+                let n = rest.iter().take_while(|b| b.is_ascii_digit() || **b == b';').count();
+                if rest.get(n) == Some(&b't') {
+                    i += 5 + n + 1;
+                    continue;
+                }
+            }
+            out.push(replies[i]);
+            i += 1;
+        }
+        out
+    }
+
     /// Feeds program output; returns what viewers should get. Replies the
     /// screen produced are left in it for the caller to send to the program.
     pub fn feed(&mut self, screen: &mut Screen, input: &[u8]) -> Vec<u8> {
@@ -155,6 +175,17 @@ mod tests {
             assert!(replies.starts_with("\x1b[?62;22c\x1b]11;rgb:") && replies.ends_with("R"), "{replies:?}");
             assert_eq!(screen.title(), "title");
         }
+    }
+
+    #[test]
+    fn resize_reports_are_dropped_but_query_answers_are_kept() {
+        let mut screen = Screen::new(80, 24, 1 << 20);
+        let mut relay = Relay::default();
+        let out = relay.feed(&mut screen, b"\x1b[c\x1b[?2048h\x1b[6n");
+        assert_eq!(out, b"\x1b[?2048h");
+        screen.resize(100, 30);
+        let replies = Relay::take_responses(&mut screen);
+        assert_eq!(replies, b"\x1b[?62;22c\x1b[1;1R");
     }
 
     #[test]

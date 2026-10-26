@@ -3,6 +3,63 @@
 mod common;
 
 use common::*;
+use serde_json::{Value, json};
+use std::io::{BufRead, BufReader, Write};
+use std::os::unix::net::UnixListener;
+
+#[test]
+fn an_up_to_date_binary_restarts_only_an_older_running_core() {
+    let mut s = Session::new();
+    let version = env!("CARGO_PKG_VERSION");
+    std::fs::create_dir_all(s.root.join("core")).unwrap();
+    std::fs::write(
+        s.root.join("core/latest.json"),
+        json!({"version": version, "generation": herdr_core::api::GENERATION, "targets": {}}).to_string(),
+    )
+    .unwrap();
+    s.env.push(("HERDR_RELEASES_URL".into(), format!("file://{}", s.root.display())));
+    let args = ["update", "--version", version];
+    assert_eq!(s.json(&args)["updated"], false);
+    assert!(!s.connect_ok(), "checking an absent core must not start one");
+    std::fs::create_dir_all(s.socket().parent().unwrap()).unwrap();
+    for (running, latest) in
+        [(version, false), ("999.0.0", false), ("unknown", false), ("0.0.0", false), ("0.0.0", true)]
+    {
+        let listener = UnixListener::bind(s.socket()).unwrap();
+        let socket = s.socket();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let req: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(req["method"], "server.status");
+            writeln!(stream, "{}", json!({"id": 1, "result": {"version": running}})).unwrap();
+            line.clear();
+            reader.read_line(&mut line).unwrap();
+            if running == "0.0.0" {
+                let req: Value = serde_json::from_str(&line).unwrap();
+                assert_eq!(req["method"], "server.restart");
+                writeln!(stream, "{}", json!({"id": 1, "result": {}})).unwrap();
+            } else {
+                assert!(line.is_empty(), "must leave {running} running");
+            }
+            drop(listener);
+            std::fs::remove_file(socket).unwrap();
+        });
+        let out = s.json(if latest { &["update"] } else { &args });
+        server.join().unwrap();
+        assert_eq!(out["updated"], false);
+        if running == "0.0.0" {
+            assert_eq!(out["restarted"], true);
+            assert_eq!(s.json(&["server", "status"])["version"], version);
+            s.json(&["server", "stop"]);
+        } else {
+            assert_ne!(out["restarted"], true);
+        }
+    }
+}
 
 #[test]
 fn update_from_a_file_swaps_hc_and_keeps_everything_running() {

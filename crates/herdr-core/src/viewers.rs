@@ -2,6 +2,7 @@
 //! bytes (minus answered queries), input, and who sets the size.
 
 use crate::holder_proto as proto;
+use crate::relay::Relay;
 use crate::rpc::RpcError;
 use crate::runtime::{Core, State};
 use crate::wire::Conn;
@@ -101,7 +102,7 @@ impl Core {
             watchers.retain(|w| w.send(out.clone()).is_ok());
         }
         if let Some(link) = holder {
-            link.input(id, &screen.take_responses());
+            link.input(id, &Relay::take_responses(screen));
         }
         let reports = screen.take_status_reports();
         let title = screen.take_title_changed().then(|| screen.title());

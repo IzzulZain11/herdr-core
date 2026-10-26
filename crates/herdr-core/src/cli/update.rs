@@ -28,6 +28,25 @@ pub(super) fn older(a: &str, b: &str) -> bool {
     matches!((parts(a), parts(b)), (Some(a), Some(b)) if a < b)
 }
 
+/// The installed binary can be current while a core started before it was
+/// replaced is still running. Do not start a core just to check its version.
+pub(super) fn up_to_date(paths: &Paths, release: &str, human: String) -> Result<Out, RpcError> {
+    let this = format!("hc {}", env!("CARGO_PKG_VERSION"));
+    let mut out = Out { json: json!({"release": release, "now": this, "updated": false}), human };
+    if let Some(stream) = client::connect_existing(paths) {
+        let status = client::call(&stream, "server.status", json!({}))?;
+        if older(&format!("hc {}", status["version"].as_str().unwrap_or_default()), &this) {
+            client::call(&stream, "server.restart", json!({}))?;
+            wait_closed(&stream);
+            let status = call(paths, "server.status", json!({}))?;
+            out.json["restarted"] = true.into();
+            out.json["pid"] = status["pid"].clone();
+            out.human.push_str(&format!("; older core restarted (pid {}), terminals kept", status["pid"]));
+        }
+    }
+    Ok(out)
+}
+
 /// Swaps the binary this hc runs from for `from`, then restarts the core
 /// the planned way: every terminal keeps running. One swap path, for people
 /// and for apps that bundle hc.

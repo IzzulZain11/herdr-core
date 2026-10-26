@@ -567,7 +567,7 @@ fn run(cmd: Option<Cmd>, json: bool, asked: bool) -> Result<Option<Out>, RpcErro
                 && !older(&this, &format!("hc {v}"))
             {
                 let human = format!("{this} is already {v} or newer");
-                return Ok(Some(Out { json: json!({"release": v, "now": this, "updated": false}), human }));
+                return Ok(Some(up_to_date(&paths, v, human)?));
             }
             // Only when asked: hc never checks for updates on its own.
             let scratch = crate::releases::Scratch::new()?;
@@ -587,7 +587,7 @@ fn run(cmd: Option<Cmd>, json: bool, asked: bool) -> Result<Option<Out>, RpcErro
             }
             if version.is_none() && !force && !older(&this, &format!("hc {}", m.version)) {
                 let human = format!("{this} is up to date (latest release: {})", m.version);
-                Out { json: json!({"release": m.version, "now": this, "updated": false}), human }
+                up_to_date(&paths, &m.version, human)?
             } else {
                 let file = crate::releases::download(&m, &crate::releases::this_target(), &scratch.0)?;
                 let mut out = update(&paths, &file, force)?;

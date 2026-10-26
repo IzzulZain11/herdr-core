@@ -134,6 +134,21 @@ fn alive(pid: u64) -> bool {
 }
 
 #[test]
+fn sessions_select_distinct_pipes_even_with_the_same_state_home() {
+    let a = Session::new();
+    let b = Session::new();
+    let status = |name: &str| {
+        let out = cmd(name, &a.root).args(["server", "status"]).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        serde_json::from_slice::<Value>(&out.stdout).unwrap()
+    };
+    let first = status(&a.name);
+    let second = status(&b.name);
+    assert_ne!(first["pid"], second["pid"], "HC_SESSION must select the pipe, not just state");
+    assert_eq!(status(&a.name)["pid"], first["pid"]);
+}
+
+#[test]
 fn ssh_reaches_the_host_without_a_control_socket() {
     use std::net::TcpListener;
     use std::sync::{Arc, atomic::AtomicBool};
