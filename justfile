@@ -3,6 +3,23 @@ set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 # Format, clippy here and for Windows, the whole suite: what CI runs on Linux.
 check: lint test
 
+# Refresh or check the help reference and command examples (no core is started).
+[unix]
+docs:
+    sh scripts/docs.sh --write
+
+[windows]
+docs:
+    $env:HC_UPDATE_DOCS='1'; cargo test --locked -p herdr-core --test cli_docs
+
+[unix]
+docs-check:
+    sh scripts/docs.sh --check
+
+[windows]
+docs-check:
+    Remove-Item Env:HC_UPDATE_DOCS -ErrorAction SilentlyContinue; cargo test --locked -p herdr-core --test cli_docs
+
 [unix]
 test:
     cargo test --locked

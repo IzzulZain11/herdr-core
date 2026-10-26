@@ -13,7 +13,6 @@ name: ci
 on:
   push:
     branches: [master]
-    paths-ignore: ["**/*.md"]
   # No paths-ignore here: CI is required to merge, so every PR needs it.
   pull_request:
   workflow_dispatch:
@@ -106,7 +105,9 @@ jobs:
       - if: matrix.os == 'windows'
         shell: pwsh
         run: scripts/fetch-conpty.ps1 -Dest target/${{ matrix.target }}/debug
-      - name: Tests
+      # cli_docs runs the built binary's help: generated reference freshness
+      # and README/docs command/flag checks, with file:line failures.
+      - name: Tests (including human docs)
         shell: bash
         run: |
           # Reading a full-screen app scrolls it with fixed 120 ms steps; GitHub's

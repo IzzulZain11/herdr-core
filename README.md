@@ -1,11 +1,11 @@
 # herdr-core (`hc`)
 
-A terminal runtime for coding agents. `hc` runs programs in terminals that
-stay alive, lets agents start, talk to, read, wait on and hear back from
-other agents, and lets a person attach to any of them and take over. It
-draws nothing: status comes from the programs themselves (OSC 7501).
+`hc` runs programs and coding agents in terminals that stay alive after you leave.
+Agents can start other agents, send them work, and hear back; you can attach to any terminal and take over.
 
-Closed beta.
+Core draws nothing. Use it from your shell, an agent, or your own app.
+
+<!-- Screenshot: a person attached to an agent started by another agent. -->
 
 ## Install
 
@@ -21,39 +21,97 @@ Windows (PowerShell):
 powershell -c "irm https://releases.herdr.dev/core/install.ps1 | iex"
 ```
 
-Updating later: `hc update` (running terminals keep running).
+Builds are available for Linux and macOS on x86_64 and aarch64, and Windows on x86_64.
+Linux builds are static. On Windows, templates and quoted shell commands need `sh` on PATH, such as Git for Windows provides.
 
-Builds: Linux x86_64 and aarch64 (static, any distro), macOS aarch64 and
-x86_64, Windows x86_64. Windows notes: the exe is unsigned (Smart App
-Control may block it); templates and quoted shell lines need an `sh` on
-PATH (Git for Windows has one).
+Run `hc update` to update. Running terminals keep running.
+See [security](docs/security.md) for the trust and signing details.
 
-## Use
+## Run it and come back
 
 ```sh
-hc run cargo test                  # runs it and waits, like a shell
-hc run --bg --name web bun dev     # starts it and returns
-hc ls                              # what's running
-hc attach web                      # take it over (ctrl+\ detaches)
-hc run reviewer "review src/x.rs"  # an agent from a template, with a task
+hc run cargo test                  # stream output and wait for it
+hc run --bg --name web bun dev     # start it and return
+hc ls                             # see live terminals
+hc attach web                     # take over; Ctrl+\ detaches
+hc read web --lines 100            # read without attaching
 ```
 
-People: `hc --help`. Agents: `hc --skill` (everything in one read).
-Other machines: `hc machine add <ssh-target>`, then `hc run --on <name> …`.
-On Windows, use SSH keys or an SSH agent: shared password/code logins are not available.
-App builders: `hc schema` (OpenRPC), and `schema/README.md` for streams and
-events.
+Closing your viewer does not end the program.
+A waiting run checks in after 180 seconds by default, leaving the program running.
+It prints the terminal's address so you can read it or wait again.
 
-## Build
+For a terminal you want to keep even if its program is lost, use `hc run --keep`.
+Recovery starts a fresh shell, never reruns the task.
+A normal exit or an explicit kill still ends it.
 
-Rust (see `.github/workflows/ci.yml` for the version), Zig 0.16, and the
-Ghostty submodule:
+## Agents run agents
+
+Give an agent `hc --skill`. It prints the agent docs in one read, including how to delegate, wait, report back, and clean up.
+
+[Templates](docs/templates.md) give an agent a command and a role.
+After saving the reviewer example from that page:
+
+```sh
+hc templates
+hc run --bg --name review reviewer "Review src/x.rs. Read-only."
+hc send review "Focus on the error path."
+hc read review --lines 100
+```
+
+Agents started inside an hc terminal become its children.
+They can report back with `hc send` and wait for their children with `hc wait --children all`.
+The parent gets notes when a child needs attention or ends.
+
+## Every machine
+
+```sh
+hc machine add my-ssh-host --name box
+hc run --on box --cwd /srv/app cargo test
+hc attach box/t3
+```
+
+Use the address returned by your run, not the example's `box/t3`.
+Programs and files stay on that machine. Your local core brings its terminals into the same list.
+[Machines](docs/machines.md) covers SSH, custom connections, remote files, and reconnecting.
+
+## Status comes from the program
+
+An agent can say it is working, done, blocked, or in error through OSC 7501, the Program Status Protocol.
+Core stores what it reports. It does not guess from screen text or recognize agent brands.
+A program that does not report status has none.
+
+Use `hc get review` for a snapshot or `hc events` to follow changes.
+
+## Build your own client
+
+`hc schema` prints the request/response API as OpenRPC with JSON Schema.
+[The API docs](schema/README.md) cover connecting, terminal streams, events, and status.
+Use `hc connect` to carry the protocol over stdin and stdout, including through SSH.
+
+## Docs
+
+- [Commands](docs/commands.md): generated from the binary's help.
+- [Machines](docs/machines.md): work across machines.
+- [Templates](docs/templates.md): reusable agent roles.
+- [Security](docs/security.md): access, state, and updates.
+- [API](schema/README.md): build a client.
+
+For a quick lookup, run `hc --help` or a command's help, such as `hc run --help`.
+For agents, use `hc --skill`.
+
+## Build from source
+
+You need Rust, Zig 0.16, and just. CI pins the Rust version in [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ```sh
 git submodule update --init --depth 1
-just check     # format, clippy (here and for Windows), the whole suite
-just install   # this build as hc (Windows: where install.ps1 puts it); terminals keep running
+cargo build --locked -p herdr-core
+just check
 ```
 
-License: Apache-2.0. `hc --licenses` prints the licenses of everything hc
-includes (regenerate with `just notices` after a dependency change).
+`just install` installs this checkout and restarts your core. Running terminals keep running.
+`just docs` refreshes the command reference. `just docs-check` checks it and the examples; CI runs the same tests.
+
+License: [Apache-2.0](LICENSE). `hc --licenses` prints the included third-party licenses.
+After a dependency change, regenerate them with `just notices`.
