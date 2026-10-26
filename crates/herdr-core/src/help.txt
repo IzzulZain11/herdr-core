@@ -19,7 +19,8 @@ Talk to programs
   send <t> <text>             paste text and press enter
   keys <t> <keys...>          press keys: enter, esc, up, ctrl+c
   interrupt <t>               press the stop key, report what happened
-  wait <t>                    wait until it stops working
+  wait <t>                    wait until it stops working (--output X: until it prints X,
+                              --children: your helpers). Use it instead of sleep.
   put <t> <file>              send a file beside it, print where it landed
 
 No terminal

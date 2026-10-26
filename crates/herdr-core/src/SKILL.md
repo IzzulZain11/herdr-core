@@ -78,7 +78,10 @@ hc wait --children all             # until none is working, or a message interru
 hc wait --children any             # next child's news or a message to you
 ```
 
-Never sleep or poll. Wait can return before all children finish:
+Never sleep or poll to wait for anything hc runs: `hc wait <t>` (it stops
+working or exits), `hc wait <t> --output X` (it prints X, e.g. a server is
+ready), `hc wait --children` (your helpers). Wait can return before all
+children finish:
 - `reason: message`: the message arrives as your next input, possibly late;
   it is not output to fetch with `hc read`. Process it and wait again if needed.
 - `reason: timeout` (default 180 seconds): a check-in, not failure; wait again.
