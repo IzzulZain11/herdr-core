@@ -659,7 +659,7 @@ impl Terminal {
         // ends up with exactly the screen's own modes, replayed below.
         let mut out = b"\x1b[!p\x1b[?2026l\x1b[?9l\x1b[?1000l\x1b[?1001l\x1b[?1002l\x1b[?1003l\x1b[?1004l\
 \x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l\x1b[?2004l\x1b[?1l\x1b[?66l\x1b[?2031l\x1b[?2048l\x1b[=0;1u\
-\x1b[?1049l\x1b[H\x1b[2J"
+\x1b[?1049l\x1b[?1047l\x1b[?47l\x1b[H\x1b[2J"
             .to_vec();
         let available = self.history_rows();
         if history > 0 && available > 0 && !self.alt_screen() {
@@ -671,10 +671,15 @@ impl Terminal {
                 out.extend(b"\x1b[H\x1b[2J");
             }
         }
+        if self.alt_screen() {
+            out.extend(b"\x1b[?1049h");
+        }
         if let Some(sel) = self.select(ffi::POINT_ACTIVE, (0, 0), last) {
             let screen = self.format(ffi::FORMAT_VT, Some(&sel), true);
-            // Synchronized output is a handshake with the old viewer; replaying it would freeze the new one.
-            out.extend(strip(&screen, b"\x1b[?2026h"));
+            // Alternate-screen aliases can disagree with the active screen. Replay
+            // only the screen chosen above, not the formatter's independent mode bits.
+            // Synchronized output belongs to the old viewer and would freeze a new one.
+            out.extend(strip(&screen, &[b"\x1b[?2026h", b"\x1b[?47h", b"\x1b[?1047h", b"\x1b[?1049h"]));
         }
         let title = self.title();
         if !title.is_empty() {
@@ -711,11 +716,11 @@ impl Drop for Terminal {
     }
 }
 
-fn strip(haystack: &[u8], needle: &[u8]) -> Vec<u8> {
+fn strip(haystack: &[u8], needles: &[&[u8]]) -> Vec<u8> {
     let mut out = Vec::with_capacity(haystack.len());
     let mut i = 0;
     while i < haystack.len() {
-        if haystack[i..].starts_with(needle) {
+        if let Some(needle) = needles.iter().find(|needle| haystack[i..].starts_with(needle)) {
             i += needle.len();
         } else {
             out.push(haystack[i]);
@@ -804,6 +809,41 @@ mod tests {
         fresh.write(&alt.paint(10));
         assert!(fresh.alt_screen());
         assert!(fresh.plain_text().contains("full screen"));
+    }
+
+    #[test]
+    fn repaint_uses_the_active_screen_not_stale_alternate_screen_modes() {
+        let mut t = Terminal::new(30, 4, 1 << 20);
+        t.write(b"main\r\n\x1b[?47h\x1b[?1049hALT\x1b[?1049lDONE");
+        assert!(!t.alt_screen());
+        let mut fresh = Terminal::new(30, 4, 1 << 20);
+        fresh.write(&t.paint(10));
+        assert!(!fresh.alt_screen());
+        assert_eq!(fresh.screen_rows(), t.screen_rows());
+
+        for enter in [47, 1047, 1049] {
+            for exit in [None, Some(47), Some(1047), Some(1049)] {
+                let mut t = Terminal::new(30, 4, 1 << 20);
+                t.write(format!("main\r\n\x1b[?{enter}h\x1b[2;3HALT").as_bytes());
+                if let Some(exit) = exit {
+                    t.write(format!("\x1b[?{exit}lDONE").as_bytes());
+                }
+                let paint = t.paint(10);
+                for viewer_mode in [None, Some(47), Some(1047), Some(1049)] {
+                    let mut viewer = Terminal::new(30, 4, 1 << 20);
+                    if let Some(mode) = viewer_mode {
+                        viewer.write(format!("old main\x1b[?{mode}hOLD ALT").as_bytes());
+                    }
+                    viewer.write(&paint);
+                    let case = (enter, exit, viewer_mode);
+                    assert_eq!(viewer.alt_screen(), t.alt_screen(), "{case:?}");
+                    assert_eq!(viewer.screen_rows(), t.screen_rows(), "{case:?}");
+                    assert!(!viewer.dec_mode(47), "{case:?}");
+                    assert!(!viewer.dec_mode(1047), "{case:?}");
+                    assert_eq!(viewer.dec_mode(1049), t.alt_screen(), "{case:?}");
+                }
+            }
+        }
     }
 
     #[test]
