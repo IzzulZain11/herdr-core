@@ -367,7 +367,12 @@ fn a_viewer_rides_out_a_dropped_line_without_reattaching() {
     v.shows("lost"); // the viewer hears it, and stays open
     assert!(v.closed.is_none(), "the stream stays open while the line is down");
     std::fs::remove_file(s.root.join("down")).unwrap();
-    wait_until("rohan back", || s.json(&["machine", "ls"])["machines"][0]["state"] == "connected");
+    // A live machine line does not mean this viewer has been reattached yet.
+    // Probe until input reaches the program through this viewer's stream.
+    wait_until("the viewer's input back", || {
+        v.typed(b"probe\r");
+        text(&rohan, "t1").contains("got-probe")
+    });
     v.typed(b"after\r");
     v.shows("got-after"); // same viewer, typing and output both ways again
 }
