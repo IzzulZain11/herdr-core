@@ -1,5 +1,7 @@
 # herdr-core
 
+If AGENTS.local.md exists, read it too: the maintainer's local rules.
+
 `herdr-core` (alias `hc`) is a terminal runtime for coding agents: it runs
 programs in terminals, keeps them alive, relays raw bytes to any viewer,
 reads status from OSC 7501, and lets agents start, talk to, read, wait on and
@@ -9,9 +11,8 @@ Read the code. This file only holds what reading won't tell you: the rules,
 the traps, and the handful of decisions that look arbitrary until you know
 why.
 
-Can (`ogulcancelik`) maintains it. His working notes (plans, the spec,
-half-finished thinking) live in `.local/`, gitignored and often out of date:
-if it exists, trust the code first and ask Can when they disagree.
+Can (`ogulcancelik`) maintains it. The code is authoritative; ask the
+maintainer about conflicting requirements.
 
 `hc --skill` prints the manual in `crates/herdr-core/src/SKILL.md`. The
 installable skill is the short stub in `skills/herdr-core/SKILL.md`: it says
@@ -42,10 +43,10 @@ layout or a workspace to return to, it does not belong here.
   abstraction before a second real caller, no config for things nobody asked
   to configure.
 - Deciding code stays separate from IO, so it tests without processes.
-- TDD. A test first for every MUST in the spec. One good test per behavior,
-  not five checking the same thing. A few end-to-end tests with real PTYs
-  beat many mocks. The suite runs in seconds; keep it that way.
-- Do not change behavior the spec defines silently. Spec changes need Can's
+- TDD. A test first for every required documented behavior. One good test per
+  behavior, not five checking the same thing. A few end-to-end tests with real
+  PTYs beat many mocks. The suite runs in seconds; keep it that way.
+- Do not change documented behavior silently. Behavior changes need maintainer
   agreement.
 - Aim for source files under ~32 KB, hard cap 48 KB because read tools stop
   near 50. Split along a real seam when you next touch one that's over.
@@ -55,6 +56,8 @@ layout or a workspace to return to, it does not belong here.
 - Tests and smokes run in isolated sessions (`HC_SESSION`) with scratch XDG
   paths under `/var/tmp`. Never touch the machine's real core, Herdr, or its
   running agents. Clean up scratch data.
+- `just install` replaces the installed binary and restarts core. Running
+  terminals are kept.
 - Real-agent smokes (Claude Code with haiku, Pi with a cheap model) cost
   money. Ask before running them.
 - A dependency change (crates or Ghostty) needs `just notices`; a test fails
@@ -68,16 +71,3 @@ layout or a workspace to return to, it does not belong here.
 Work on a branch and open a pull request to `master`. CI must pass and Can
 approves; merges are squashed. Commit messages: lowercase conventional
 commits, single line, no AI co-author lines. Only Can releases (a `v*` tag).
-
-## Only on Can's machines
-
-Skip this section unless the checkout is Can's (`~/Projects/herdr-core` on
-his Linux desktop or Mac).
-
-- Propose the commit message first. No commit or push without his go.
-- `just install` replaces `~/.local/bin/hc` and restarts his core. Only with
-  his go.
-- Releases only through `just release-prepare X.Y.Z`, then `just
-  release-publish X.Y.Z` once he says go. Publish pushes master, waits for CI
-  on that commit, tags only if it passed. Never push a release tag by hand.
-- `.local/background.md` says where Herdr 1's lessons live on his machine.

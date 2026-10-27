@@ -1,9 +1,8 @@
 # A release: push a tag `v<version>` matching crates/herdr-core/Cargo.toml.
-# Four builds (Linux static musl, so hc runs on any distro, including old
-# servers added as machines; macOS native), then everything goes to the
-# releases bucket: versioned files first, core/latest.json last, so nobody
-# sees a version whose files aren't up yet. The app's CI downloads the core
-# it pins from core/<version>/, never builds it.
+# Five builds: Linux x86_64/aarch64, macOS x86_64/aarch64, and Windows x86_64.
+# Linux uses static musl for compatibility with older distros.
+# Upload versioned files first, core/latest.json last, so nobody sees a
+# version whose files aren't up yet.
 name: release
 
 on:
@@ -33,7 +32,7 @@ jobs:
           - { name: linux-x86_64, target: x86_64-unknown-linux-musl, runner: ubuntu-latest }
           - { name: linux-aarch64, target: aarch64-unknown-linux-musl, runner: ubuntu-22.04-arm }
           - { name: macos-aarch64, target: aarch64-apple-darwin, runner: macos-15 }
-          # Built on Apple Silicon (Intel runners took ~25 min); runs there under Rosetta for the check.
+          # Cross-build on Apple Silicon; verify the Intel binary under Rosetta.
           - { name: macos-x86_64, target: x86_64-apple-darwin, runner: macos-15 }
           - { name: windows-x86_64, target: x86_64-pc-windows-msvc, runner: windows-2025 }
     runs-on: ${{ matrix.runner }}
@@ -85,7 +84,7 @@ jobs:
           $bin = "target/${{ matrix.target }}/release/herdr-core.exe"
           & $bin --version
           if ($LASTEXITCODE) { throw "it does not run" }
-          # A clean Windows has no Visual C++ runtime (Herdr #3129).
+          # A clean Windows has no Visual C++ runtime.
           $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($bin)).ToLower()
           foreach ($dll in "vcruntime140", "msvcp140", "api-ms-win-crt-") { if ($text.Contains($dll)) { throw "herdr-core.exe imports $dll" } }
           New-Item -ItemType Directory -Force stage/THIRD-PARTY-NOTICES, dist | Out-Null
@@ -101,13 +100,10 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Signs herdr-core.exe (ConPTY is Microsoft's, already signed) with Azure
-  # Artifact Signing and rezips, on Can's tag pushes and manual runs (to test
-  # signing without publishing). Azure trusts only jobs in the signing
-  # environment (v* tags and master). The Azure IDs are signing environment
-  # variables; the certificate profile is a repository variable (job-level
-  # `if` can't see environment ones), and while it's unset this is skipped
-  # and releases go out unsigned.
+  # Sign Windows builds for maintainer tag/manual runs. ConPTY is already signed.
+  # Azure trusts only the signing environment (v* tags and master).
+  # Azure IDs are environment variables; the job condition needs repository-level
+  # AZURE_SIGNING_PROFILE. Unset profile means unsigned releases.
   sign-windows:
     needs: build
     if: >-

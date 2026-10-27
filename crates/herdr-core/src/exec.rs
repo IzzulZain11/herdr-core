@@ -116,9 +116,8 @@ pub fn sweep_leftovers(state: &Path) {
 }
 
 /// The folder `cwd` names: from this machine's home for a caller from afar,
-/// else from the core's folder; that start when none is given. Home is
-/// `$HOME` as written, never the core's own folder: that can be a path
-/// gone stale (a boat box swaps its disk in under a running core).
+/// else from the core's folder; that start when none is given.
+/// Use HOME, not the core's cwd: the underlying home directory may have been replaced.
 pub fn folder(cwd: Option<&str>, from_afar: bool) -> String {
     let start = match (from_afar, std::env::var("HOME")) {
         (true, Ok(home)) => home,

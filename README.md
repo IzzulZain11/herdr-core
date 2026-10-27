@@ -5,8 +5,6 @@ Agents can start other agents, send them work, and hear back; you can attach to 
 
 Core draws nothing. Use it from your shell, an agent, or your own app.
 
-<!-- Screenshot: a person attached to an agent started by another agent. -->
-
 ## Install
 
 Linux and macOS:

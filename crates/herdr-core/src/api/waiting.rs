@@ -109,13 +109,7 @@ pub(super) fn as_is(t: &Terminal, ended: bool) -> WaitResult {
     }
 }
 
-/// Decided from the children's current facts, again on every change:
-/// `all`: none is working (one that hasn't reported yet is still starting);
-/// the reply lists every child, finished ones too. `any`: a child with news
-/// (for the parent itself: news it hasn't seen, even from before the wait), or
-/// a message typed into the waiting parent (it sits in its queue until this
-/// call ends); idle children are waited on too.
-/// Whose children: a terminal here (its id), or a parent on a core that dialed in.
+/// Resolve whose children: a local terminal or a parent on a peer.
 pub(super) fn children_of(core: &Core, p: &WaitParams) -> Result<(Option<u32>, String), RpcError> {
     match (&p.terminal, &p.caller) {
         (Some(t), _) => match crate::remote::peer_address(core, t) {
@@ -193,6 +187,12 @@ pub(super) async fn wait_children_everywhere(
     merged.ok_or_else(|| RpcError::new("unavailable", "no answer from any machine", ""))
 }
 
+/// Decided from the children's current facts, again on every change:
+/// `all`: none is working (one that hasn't reported yet is still starting);
+/// the reply lists every child, finished ones too. `any`: a child with news
+/// (for the parent itself: news it hasn't seen, even from before the wait), or
+/// a message typed into the waiting parent (it sits in its queue until this
+/// call ends); idle children are waited on too.
 /// `others`: children on other machines count too, so none here is no answer.
 pub(super) async fn wait_children(
     core: &Arc<Core>,

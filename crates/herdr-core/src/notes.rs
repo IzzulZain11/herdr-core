@@ -14,7 +14,7 @@ pub enum Job {
     Notes(u32),
     /// The parent finished: end children that asked to die with it.
     Orphaned(u32),
-    /// News for a parent on a core that dialed in (`can-desktop/t3`).
+    /// News for a parent on a core that dialed in (`desktop/t3`).
     NotesAfar(String),
 }
 

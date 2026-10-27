@@ -19,7 +19,7 @@ fn main() {
     let windows = target.contains("windows");
     let mut zig = PathBuf::from(std::env::var("ZIG").unwrap_or_else(|_| "zig".into()));
     // Zig on Windows fails starting its helpers when PATH holds certain links
-    // (the folder junctions some installers make, Herdr's among them): it only
+    // (the folder junctions some installers make): it only
     // needs Windows itself and its own folder.
     let mut clean_path = None;
     if cfg!(windows) {

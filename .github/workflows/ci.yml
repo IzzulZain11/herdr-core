@@ -1,10 +1,9 @@
 # Every push to master and every pull request: clippy and the whole suite
 # on Linux (real PTYs, real processes), then the upgrade test against the
 # last release: an update must never break running terminals. macOS and
-# Windows minutes cost 10x and 2x on a private repo, so they run only when
-# this workflow is started by hand.
+# Windows tests run only on manual dispatch.
 #
-# Cache rules (from Herdr and the app): one pinned toolchain so caches survive
+# Cache rules: one pinned toolchain so caches survive
 # stable bumps; only master pushes save, so PR caches can't evict the ones
 # everybody restores; libghostty-vt's Zig build lives in the ghostty-vt
 # crate's OUT_DIR, kept with the workspace crates.
@@ -110,9 +109,7 @@ jobs:
       - name: Tests (including human docs)
         shell: bash
         run: |
-          # Reading a full-screen app scrolls it with fixed 120 ms steps; GitHub's
-          # macOS VM redraws too slowly for them, so stitch.rs runs on Linux CI
-          # and our own Macs only.
+          # Full-screen scrolling tests are disabled on macOS CI because runner timing is unreliable.
           only=()
           if [ "${{ matrix.os }}" = macos ]; then
             for t in crates/herdr-core/tests/*.rs; do

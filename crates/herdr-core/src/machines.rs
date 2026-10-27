@@ -322,7 +322,7 @@ async fn dial_once(
             // cmd and PowerShell, when hc isn't where install.ps1 puts it.
             let missing_windows =
                 is_windows(target) && (err.contains("is not recognized") || err.contains("cannot find the path"));
-            // Said in words too: a provider's command may not pass the exit code on (boat ssh).
+            // Some connection wrappers collapse all remote failures to exit code 1.
             if status == Some(127) || err.contains(NOT_HERE) || missing_windows {
                 return Err(RpcError::new(
                     "hc_missing",

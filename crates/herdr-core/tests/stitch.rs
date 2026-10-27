@@ -1,5 +1,4 @@
-//! Reading full-screen agents by scrolling them (Herdr's alt-screen read cases,
-//! end to end against a fake full-screen app on a real terminal).
+//! Full-screen history reconstruction regression tests against a fake app on a real terminal.
 #![cfg(unix)] // Windows: tests/windows.rs
 
 mod common;

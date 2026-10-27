@@ -7,14 +7,13 @@ edition = "2024"
 license = "Apache-2.0"
 publish = false
 
-# On top of clippy's defaults (CI denies warnings). Picked from the 2026-10-17
-# sweep: zero hits today, real mistakes when they appear.
-# Releases: whole-program optimization, no symbols (5.8 MB instead of 7.5).
+# Release builds use LTO and strip symbols.
 [profile.release]
 lto = "fat"
 codegen-units = 1
 strip = true
 
+# On top of clippy's defaults (CI denies warnings).
 [workspace.lints.clippy]
 dbg_macro = "warn"
 todo = "warn"

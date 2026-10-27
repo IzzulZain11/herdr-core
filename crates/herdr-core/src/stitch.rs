@@ -265,7 +265,6 @@ impl Core {
                     valid = false;
                     break 'scroll;
                 };
-                // It changes `history` only when it advances.
                 match merge_up(&mut history, &previous, &next) {
                     Merge::Advanced(_) => {
                         (previous, still) = (next, false);
@@ -424,7 +423,7 @@ pub fn text(rows: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    //! Herdr's alt-screen read cases, as characterization tests.
+    //! Full-screen history reconstruction regression tests.
     use super::*;
 
     const W: usize = 20;

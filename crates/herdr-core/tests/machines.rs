@@ -138,9 +138,8 @@ fn a_machine_reached_through_any_command_works_like_one_over_ssh() {
         m["state"] == "connected" && reach(&m) == reach(&added)
     });
 
-    // A box without hc gets this one through the same command, even one that
-    // passes no exit codes on (boat ssh exits 1 for any failure); from a
-    // script, --install says yes up front.
+    // Some connection wrappers collapse all remote failures to exit code 1.
+    // A box without hc still gets this one through that command; --install approves the copy.
     let bare_via = format!("f() {{ {command} bare \"$@\" || exit 1; }}; f");
     let (_, missing) = s.err(&["--json", "machine", "add", "--via", &bare_via, "--name", "bare"]);
     assert_eq!(missing["error"]["kind"], "hc_missing", "{missing}");

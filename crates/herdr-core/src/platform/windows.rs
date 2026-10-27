@@ -583,7 +583,7 @@ pub fn spawn_detached(cmd: Command, log: File) -> io::Result<()> {
         };
         let mut started = set != 0 && start(flags | CREATE_BREAKAWAY_FROM_JOB);
         // A job that won't let us leave. Under ssh, one that kills on close
-        // ends every terminal at logout (Herdr #2008): refuse. Elsewhere
+        // ends every terminal at logout: refuse. Elsewhere
         // (cargo, some launchers) stay in it and live as long as it does.
         if !started && set != 0 && GetLastError() == ERROR_ACCESS_DENIED {
             if std::env::var_os("SSH_CONNECTION").is_some() && job_kills_on_close() {

@@ -20,8 +20,9 @@ protocol generation, decided on purpose.
 
 ## Connecting
 
-The core listens on a Unix socket (`$XDG_RUNTIME_DIR/herdr-core/<session>.sock`,
-`HC_SOCKET` overrides). `hc connect` speaks the same protocol over
+On Unix, core listens on a Unix socket; on Windows, it uses a named pipe.
+See [endpoint rules](../docs/security.md#state-and-endpoints) for default paths,
+fallbacks, and overrides. `hc connect` speaks the same protocol over
 stdin/stdout, so `ssh box hc connect` is a remote core.
 
 A connection starts in **plain mode**: JSON-RPC 2.0, one message per line.

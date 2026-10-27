@@ -725,7 +725,6 @@ impl Core {
         }
     }
 
-    /// Planned restart: the holder keeps programs; we save every screen exactly.
     /// Ends what lost terminals left running, in the background but counted:
     /// stop and restart wait for it.
     fn sweep_in_background(&self, scopes: Vec<String>) {
@@ -747,6 +746,7 @@ impl Core {
         }
     }
 
+    /// Planned restart: the holder keeps programs; we save every screen exactly.
     pub fn handover(&self) {
         self.wait_for_sweeps();
         self.goodbye(Goodbye::Handover);

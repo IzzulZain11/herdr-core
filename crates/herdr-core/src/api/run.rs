@@ -109,7 +109,7 @@ pub(super) async fn start(
     // Set once, at start: an explicit parent, else the calling terminal.
     let parent = match (&p.parent, &p.caller) {
         (Some(parent), _) => Some(crate::terminals::address(resolve(core, parent)?)),
-        // Started from a terminal on the machine that dialed in: `can-desktop/t3`.
+        // Started from a terminal on the machine that dialed in: `desktop/t3`.
         (None, Some(caller)) if !p.no_parent && from_afar => {
             caller.split_once('/').and_then(|(_, t)| crate::terminals::parse_id(t)).map(|_| caller.clone())
         }

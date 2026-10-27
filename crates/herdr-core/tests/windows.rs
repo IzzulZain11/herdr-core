@@ -23,7 +23,7 @@ impl Session {
     fn new() -> Session {
         static N: AtomicU32 = AtomicU32::new(0);
         static WATCHDOG: std::sync::Once = std::sync::Once::new();
-        // A hung test fails in a minute instead of stalling the suite.
+        // Abort a hung test binary after the watchdog deadline.
         WATCHDOG.call_once(|| {
             std::thread::spawn(|| {
                 let limit = std::env::var("HC_TEST_WATCHDOG_S").ok().and_then(|s| s.parse().ok()).unwrap_or(90);

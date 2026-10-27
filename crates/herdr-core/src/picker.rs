@@ -299,7 +299,6 @@ pub fn pick(title: &str, orders: &[(&str, Vec<Item>)]) -> Option<String> {
         }
 
         let Some(input) = next_input(&mut carry) else { break None };
-        // Some(result): leave with it.
         let mut leave = None;
         for key in keys(&input) {
             match key {

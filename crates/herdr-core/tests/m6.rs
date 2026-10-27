@@ -293,7 +293,7 @@ fn messages_between_agents_say_who_sent_them() {
 
 #[test]
 fn notes_off_means_plain_messages_too() {
-    // `notes = false`: nothing hc adds on its own, tags included (Can, 2026-10-17).
+    // `notes = false`: nothing hc adds on its own, tags included.
     let s = session();
     let config = s.root.join("config/herdr-core/config.toml");
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();

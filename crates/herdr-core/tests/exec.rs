@@ -73,8 +73,7 @@ fn exec_returns_exactly_what_the_program_wrote_here_and_on_a_machine() {
 
 #[test]
 fn a_relative_folder_there_starts_in_its_home_never_where_its_core_runs() {
-    // rohan's core runs in this test's folder, not in rohan's home (on a boat
-    // box it sat on a retired copy of /home): a folder is home + the path.
+    // The remote core's cwd differs from its HOME.
     let rohan = Session::new();
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));

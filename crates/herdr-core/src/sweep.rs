@@ -211,8 +211,7 @@ mod tests {
 
     #[test]
     fn a_process_older_than_its_token_is_never_read() {
-        // Reading every process's environment is what a sweep costs (1,300 on a
-        // busy Mac, after every exec): one started before the token can't carry it.
+        // A process older than the token cannot carry it, so its environment need not be read.
         let later = now() * 2 + 1_000_000;
         let (tokens, found) = ([format!("{later}-{}", crate::platform::random_hex())], [token()]);
         let mut sleeper = python("import time; time.sleep(30)").env(VAR, &tokens[0]).spawn().unwrap();
