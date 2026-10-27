@@ -44,6 +44,19 @@ The command runs on your local machine. The shell line runs on the destination a
 Log in with that tool first if it needs credentials.
 The temporary marker only helps clients show short-lived machines apart; it does not delete anything for you.
 
+### Vercel Sandbox
+
+The `sandbox` CLI does not carry stdin as a plain pipe, so it needs a small helper:
+[`via/vercel-sandbox.py`](via/vercel-sandbox.py) (Python 3, macOS or Linux).
+Log in with `sandbox login` first, and give the sandbox a timeout long enough for the work:
+when it stops, its terminals stop with it.
+
+```sh
+sandbox create --name my-box --timeout 1h
+hc machine add --name my-box --temp --install --via '/path/to/vercel-sandbox.py my-box'
+hc run --bg --on my-box --cwd /vercel/app npm run build
+```
+
 ## What runs where
 
 Your local core keeps the machine connection and combines terminal lists and events.
