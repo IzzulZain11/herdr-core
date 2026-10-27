@@ -13,8 +13,10 @@ Can (`ogulcancelik`) maintains it. His working notes (plans, the spec,
 half-finished thinking) live in `.local/`, gitignored and often out of date:
 if it exists, trust the code first and ask Can when they disagree.
 
-`hc --skill` prints the installable Agent Skill in `crates/herdr-core/src/SKILL.md`.
-Keep it current when changing agent-facing behavior.
+`hc --skill` prints the manual in `crates/herdr-core/src/SKILL.md`. The
+installable skill is the short stub in `skills/herdr-core/SKILL.md`: it says
+when to use hc and points to `hc --skill`, so it rarely changes.
+Keep the manual current when changing agent-facing behavior.
 
 ## The rule
 

@@ -167,13 +167,8 @@ fn help_is_for_people_and_points_agents_to_their_own() {
     assert_eq!(out(&["-h"]), help);
     let agent = out(&["--skill"]);
     assert!(agent.lines().count() < 500, "skill must stay under 500 lines");
-    let mut lines = agent.lines();
-    assert_eq!(lines.next(), Some("---"));
-    assert_eq!(lines.next(), Some("name: hc"));
-    let description = lines.next().unwrap().strip_prefix("description: ").unwrap();
-    let description: String = serde_json::from_str(description).expect("quoted YAML description");
-    assert!(!description.is_empty() && description.chars().count() < 1024);
-    assert_eq!(lines.next(), Some("---"));
+    // The manual is read, not installed: only its embedded stub is a skill.
+    assert!(!agent.starts_with("---"), "manual has no skill frontmatter");
     let names =
         |text: &str, name: &str| text.split(|c: char| !c.is_ascii_alphanumeric() && c != '-').any(|word| word == name);
     let for_people = ["events", "connect", "server", "schema", "update"];

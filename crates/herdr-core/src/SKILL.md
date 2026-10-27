@@ -1,18 +1,7 @@
----
-name: hc
-description: "Run programs and orchestrate interactive coding agents in persistent terminals with herdr-core (hc). Use when delegating tasks, steering or waiting on agents, reading terminal output, or running commands and editing files on another machine."
----
+# hc manual (herdr-core)
 
-## Install this skill
-
-Ask your user whether to install this skill for future sessions. Only if they
-say yes, save this exact output as `hc/SKILL.md` in your harness's skills
-folder, user-level unless they want it per repo. Common folders:
-- `~/.agents/skills/` or `<repo>/.agents/skills/` (Codex, pi, Cursor, Gemini CLI, OpenCode, Amp).
-- `~/.claude/skills/` or `<repo>/.claude/skills/` (Claude Code).
-- Also: `~/.pi/agent/skills/`, `~/.cursor/skills/`, `~/.gemini/skills/`,
-  `~/.config/opencode/skills/`, `~/.config/agents/skills/` (Amp).
-Check your harness's docs if unsure. Installing is optional; use the skill now.
+The current manual for herdr-core's CLI, `hc`. It is not `herdr`, the older
+terminal multiplexer.
 
 # hc: programs and agents that stay alive
 
