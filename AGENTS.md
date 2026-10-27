@@ -43,6 +43,10 @@ layout or a workspace to return to, it does not belong here.
   abstraction before a second real caller, no config for things nobody asked
   to configure.
 - Deciding code stays separate from IO, so it tests without processes.
+- Gate per OS only where the OS really behaves differently, and keep it in
+  `platform/` (`unix.rs`, `windows.rs`) behind one interface: shared code
+  calls `platform::…` and has no `#[cfg]` of its own. A platform quirk gets
+  a test on its platform, and other platforms keep their behavior.
 - TDD. A test first for every required documented behavior. One good test per
   behavior, not five checking the same thing. A few end-to-end tests with real
   PTYs beat many mocks. The suite runs in seconds; keep it that way.
