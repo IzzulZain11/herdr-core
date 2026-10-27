@@ -85,7 +85,7 @@ Use `hc get review` for a snapshot or `hc events` to follow changes.
 
 `hc schema` prints the request/response API as OpenRPC with JSON Schema.
 [The API docs](schema/README.md) cover connecting, terminal streams, events, and status.
-Use `hc connect` to carry the protocol over stdin and stdout, including through SSH.
+Use `hc connect` to carry a running core's protocol over stdin and stdout, including through SSH.
 
 ## Docs
 

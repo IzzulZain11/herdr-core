@@ -18,6 +18,7 @@ hc run --on box --cwd /srv/app cargo test
 The other machine needs hc. In an interactive terminal, add asks before copying hc there if it is missing or too old to talk to.
 For a script, `hc machine add user@host --name box --install` allows that copy without asking.
 When the OS and CPU match, it copies your current build. Otherwise it uses this version's released build for that target.
+Copying hc there explicitly restarts its core. If hc is already installed, start the destination core before adding it.
 
 SSH passwords, codes, and host-key prompts need a person at a terminal.
 On Windows, use SSH keys or an SSH agent; hc does not share interactive password logins there.
@@ -109,4 +110,6 @@ Repeat old/new pairs for several edits; all succeed or none do.
 - If a socket path is too long, use a shorter session name or socket path. See [state and endpoints](security.md#state-and-endpoints).
 
 Once a machine is added, core retries a lost connection. Reattach after it returns.
+Connecting only attaches to a running core; retries do not start a stopped one.
+Start it on the destination with `hc server start`, using the environment you want its programs to inherit.
 To forget the connection here, use `hc machine rm box`. That does not stop its remote terminals.

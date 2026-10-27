@@ -103,6 +103,7 @@ fn reconnecting_a_machine_tells_document_readers_to_refetch() {
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &remote)]));
     s.env.push(("HC_RECONNECT_MS".into(), "200".into()));
+    remote.json(&["server", "start"]);
     s.json(&["machine", "add", "rohan"]);
     let mut events = s.connect();
     events.call(1, "events.subscribe", json!({}));
@@ -132,6 +133,7 @@ fn documents_work_through_another_core_without_rewriting_json() {
     let remote = Session::new();
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &remote)]));
+    remote.json(&["server", "start"]);
     s.json(&["machine", "add", "rohan"]);
     wait_until("connected", || s.json(&["machine", "ls"])["machines"][0]["state"] == "connected");
     s.json(&["machine", "rename", "rohan", "desktop"]);

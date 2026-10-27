@@ -29,6 +29,7 @@ fn a_machine_is_added_renamed_kept_and_forgotten() {
 fn a_machine_shows_the_version_its_line_last_saw() {
     // Updated there since it was added (hc machine update, or by hand).
     let rohan = Session::new();
+    rohan.json(&["server", "start"]);
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
     s.json(&["machine", "add", "rohan"]);
@@ -44,22 +45,16 @@ fn a_machine_shows_the_version_its_line_last_saw() {
 #[test]
 fn another_session_on_the_same_box_is_another_machine() {
     let rohan = Session::new();
+    rohan.json(&["server", "start"]);
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
     let first = s.json(&["machine", "add", "rohan"]);
+    let started = rohan.cmd().env("HC_SESSION", "scratch").args(["server", "start"]).output().unwrap();
+    assert!(started.status.success());
     let other = s.json(&["machine", "add", "rohan", "--session", "scratch", "--name", "rohan-scratch"]);
-    s.json(&["machine", "rm", "rohan-scratch"]); // else its line starts that core again
-    // A dial already on its way when the machine was removed can still start
-    // that core (the fake ssh's `hc connect` outlives it): stop until none comes back.
-    let stop = || {
-        let out = rohan.cmd().env("HC_SESSION", "scratch").args(["server", "stop"]).output().unwrap();
-        serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()["stopped"] == true
-    };
-    wait_until("no scratch core comes back", || {
-        stop();
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        !stop()
-    });
+    s.json(&["machine", "rm", "rohan-scratch"]);
+    let stopped = rohan.cmd().env("HC_SESSION", "scratch").args(["server", "stop"]).output().unwrap();
+    assert!(stopped.status.success());
     assert_ne!(other["id"], first["id"]);
     assert_eq!(other["session"], "scratch");
 }
@@ -67,6 +62,7 @@ fn another_session_on_the_same_box_is_another_machine() {
 #[test]
 fn a_box_that_asks_for_a_code_is_added_from_a_terminal() {
     let rohan = Session::new();
+    rohan.json(&["server", "start"]);
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
     let (_, piped) = s.err(&["--json", "machine", "add", "otp-rohan"]);
@@ -79,7 +75,6 @@ fn a_box_that_asks_for_a_code_is_added_from_a_terminal() {
     assert_eq!(s.json(&["machine", "ls"])["machines"][0]["name"], "otp-rohan");
 
     // The login lapses and the line drops: the line waits for a person.
-    // (Connected first: the line's first dial is what starts hc there.)
     wait_until("connected", || s.json(&["machine", "ls"])["machines"][0]["state"] == "connected");
     std::fs::remove_file(s.root.join("otp-ok")).unwrap();
     rohan.hc(&["server", "restart"]);
@@ -118,6 +113,7 @@ fn a_box_without_hc_gets_this_one_when_you_say_yes() {
 #[test]
 fn a_machine_reached_through_any_command_works_like_one_over_ssh() {
     let rohan = Session::new();
+    rohan.json(&["server", "start"]);
     let mut bare = Session::new();
     bare.bin = bare.root.join("bin/herdr-core"); // no hc there
     let s = Session::new();
@@ -152,6 +148,7 @@ fn a_machine_reached_through_any_command_works_like_one_over_ssh() {
 #[test]
 fn a_login_banner_does_not_get_in_the_way() {
     let rohan = Session::new();
+    rohan.json(&["server", "start"]);
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
     s.json(&["machine", "add", "noisy-rohan"]);
@@ -160,6 +157,7 @@ fn a_login_banner_does_not_get_in_the_way() {
 #[test]
 fn adding_says_what_went_wrong_and_saves_nothing() {
     let rohan = Session::new();
+    rohan.json(&["server", "start"]);
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan), ("self", &s)]));
     s.json(&["machine", "add", "rohan"]);

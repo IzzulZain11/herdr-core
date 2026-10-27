@@ -24,6 +24,7 @@ On Unix, core listens on a Unix socket; on Windows, it uses a named pipe.
 See [endpoint rules](../docs/security.md#state-and-endpoints) for default paths,
 fallbacks, and overrides. `hc connect` speaks the same protocol over
 stdin/stdout, so `ssh box hc connect` is a remote core.
+It attaches to an already running core and fails if none is reachable; it never starts one.
 
 A connection starts in **plain mode**: JSON-RPC 2.0, one message per line.
 Any language or `socat` works.

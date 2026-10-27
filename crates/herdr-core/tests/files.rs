@@ -16,6 +16,7 @@ fn files_are_written_read_and_edited_here_and_on_a_machine() {
     let rohan = Session::new();
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
+    rohan.json(&["server", "start"]);
     s.json(&["machine", "add", "rohan"]);
     let src = source(); // ~150 KB: past one argument's limit
     let here = s.root.display().to_string();

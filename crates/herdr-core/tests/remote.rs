@@ -13,12 +13,26 @@ fn with_rohan() -> (Session, Session) {
 
 fn with_rohan_env(env: &[(&str, &str)]) -> (Session, Session) {
     let rohan = Session::new();
+    rohan.json(&["server", "start"]);
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
     s.env.push(("HC_RECONNECT_MS".into(), "200".into()));
     s.env.extend(env.iter().map(|(k, v)| (k.to_string(), v.to_string())));
     s.json(&["machine", "add", "rohan"]);
     (rohan, s)
+}
+
+#[test]
+fn reconnecting_does_not_start_a_stopped_core() {
+    let (rohan, s) = with_rohan();
+    let state = || s.json(&["machine", "ls"])["machines"][0]["state"].clone();
+    wait_until("connected", || state() == "connected");
+    rohan.json(&["server", "stop"]);
+    wait_until("unreachable", || state() == "unreachable");
+    std::thread::sleep(std::time::Duration::from_secs(1)); // several reconnect attempts
+    assert!(!rohan.connect_ok(), "reconnecting must leave the stopped core alone");
+    rohan.json(&["server", "start"]);
+    wait_until("back after its owner starts it", || state() == "connected");
 }
 
 #[test]
@@ -93,7 +107,7 @@ fn addresses(list: &Value) -> Vec<String> {
 
 #[test]
 fn two_machines_that_added_each_other_list_at_once() {
-    let (mut rohan, mut s) = (Session::new(), Session::new()); // s stops first: it would dial rohan back up
+    let (mut rohan, mut s) = (Session::new(), Session::new());
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
     rohan.env.push(fake_ssh(&rohan, &[("desk", &s)]));
     // Each core started with its own way to the other.
@@ -109,12 +123,12 @@ fn two_machines_that_added_each_other_list_at_once() {
         got.sort();
         assert_eq!(got, want, "each lists its own and the other's, nothing relayed back");
     }
-    rohan.json(&["machine", "rm", "desk"]); // else it dials a stopped desk back up
+    rohan.json(&["machine", "rm", "desk"]);
 }
 
 #[test]
 fn two_machines_that_added_each_other_never_echo_events_back() {
-    let (mut rohan, mut s) = (Session::new(), Session::new()); // s stops first: it would dial rohan back up
+    let (mut rohan, mut s) = (Session::new(), Session::new());
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
     rohan.env.push(fake_ssh(&rohan, &[("desk", &s)]));
     run(&s, &["sleep", "100"]);
@@ -135,7 +149,7 @@ fn two_machines_that_added_each_other_never_echo_events_back() {
         events += usize::from(std::io::BufRead::read_line(&mut c.reader, &mut line).is_ok_and(|n| n > 0));
     }
     assert!(events < 20, "{events} events in 2 s");
-    rohan.json(&["machine", "rm", "desk"]); // else it dials a stopped desk back up
+    rohan.json(&["machine", "rm", "desk"]);
 }
 
 #[test]

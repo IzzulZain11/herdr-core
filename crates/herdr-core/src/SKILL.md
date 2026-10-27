@@ -118,6 +118,9 @@ Use the returned address to wait/read it; don't launch a duplicate.
 Your harness's own file tools touch only the machine you run on. Use hc for
 remote files and commands. `hc machine ls` lists configured machines; see
 `hc machine --help` to configure SSH or `--via <cmd>` connections.
+Connections only attach to a running destination core. Start it there with
+`hc server start` before adding it; reconnects leave a stopped core alone.
+An explicitly requested install or update still restarts the destination core.
 
 On Windows, `hc server status` never starts a core. If elevated SSH startup
 would block the same user's desktop session, open Herdr on that Windows

@@ -9,6 +9,7 @@ fn a_file_lands_beside_the_terminal_keeps_its_name_and_goes_with_it() {
     let rohan = Session::new();
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
+    rohan.json(&["server", "start"]);
     s.json(&["machine", "add", "rohan"]);
     let image: Vec<u8> = (0..=255u8).cycle().take(300_000).collect();
     let file = s.root.join("shot.png");

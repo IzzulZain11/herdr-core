@@ -49,6 +49,7 @@ fn exec_returns_exactly_what_the_program_wrote_here_and_on_a_machine() {
     let rohan = Session::new();
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
+    rohan.json(&["server", "start"]);
     s.json(&["machine", "add", "rohan"]);
     for on in [&[][..], &["--on", "rohan"][..]] {
         let script = format!("awk '{TABLE}'; printf 'oops\\0\\377' >&2; exit 3");
@@ -77,6 +78,7 @@ fn a_relative_folder_there_starts_in_its_home_never_where_its_core_runs() {
     let rohan = Session::new();
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
+    rohan.json(&["server", "start"]);
     s.json(&["machine", "add", "rohan"]);
     std::fs::create_dir_all(rohan.root.join("app")).unwrap();
     std::fs::write(rohan.root.join("app/x.txt"), "x\n").unwrap();
@@ -94,6 +96,7 @@ fn exec_feeds_what_is_piped_with_stdin_flag_and_nothing_without() {
     let rohan = Session::new();
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
+    rohan.json(&["server", "start"]);
     s.json(&["machine", "add", "rohan"]);
     // Past one argument's limit, binary, and echoed while it comes (no deadlock).
     let input: Vec<u8> = (0..=255u8).cycle().take(300_000).collect();
@@ -142,6 +145,7 @@ fn exec_ends_when_its_caller_goes_away_here_or_across_a_line() {
     let rohan = Session::new();
     let mut s = Session::new();
     s.env.push(fake_ssh(&s, &[("rohan", &rohan)]));
+    rohan.json(&["server", "start"]);
     s.json(&["machine", "add", "rohan"]);
     for (on, file) in [(None, "here"), (Some("rohan"), "there")] {
         let script = format!("{} sleep 100", stubborn(&s, file));

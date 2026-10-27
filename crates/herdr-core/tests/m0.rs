@@ -137,6 +137,10 @@ fn hello_switches_to_framed_mode() {
 #[test]
 fn connect_carries_the_protocol_over_stdio() {
     let s = Session::new();
+    let (_, error) = s.err(&["--json", "connect"]);
+    assert_eq!(error["error"]["kind"], "unavailable");
+    assert!(!s.connect_ok(), "connecting must not start a core");
+    s.json(&["server", "start"]);
     let mut child = s.cmd().arg("connect").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = BufReader::new(child.stdout.take().unwrap());

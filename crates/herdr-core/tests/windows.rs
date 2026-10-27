@@ -400,6 +400,16 @@ fn new_terminals_refresh_windows_settings_without_losing_runtime_variables() {
 }
 
 #[test]
+fn connect_does_not_start_a_missing_core() {
+    let s = Session::new();
+    let out = cmd(&s.name, &s.root).args(["--json", "connect"]).output().unwrap();
+    assert!(!out.status.success());
+    let error: Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "unavailable", "{error}");
+    assert_eq!(s.json(&["server", "stop"])["stopped"], false);
+}
+
+#[test]
 fn an_ssh_client_uses_an_existing_core_instead_of_starting_another() {
     let s = Session::new();
     let first = s.json(&["server", "start"]);

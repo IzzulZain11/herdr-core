@@ -98,7 +98,7 @@ enum Cmd {
     },
     /// Every API method with its JSON Schema, for app builders.
     Schema,
-    /// Speak the protocol over stdin/stdout (`ssh box hc connect`).
+    /// Speak a running core's protocol over stdin/stdout (`ssh box hc connect`).
     Connect {
         /// The hc session to reach, like HC_SESSION (one command that reads
         /// the same in sh, cmd and PowerShell).
@@ -503,7 +503,7 @@ fn run(cmd: Option<Cmd>, json: bool, asked: bool) -> Result<Option<Out>, RpcErro
         Cmd::Connect { session } => {
             let paths = match session {
                 Some(s) => {
-                    // SAFETY: no other thread runs yet; a core this starts inherits it.
+                    // SAFETY: no other thread runs yet.
                     unsafe { std::env::set_var("HC_SESSION", s) };
                     Paths::from_env()?
                 }
@@ -805,7 +805,7 @@ fn wait_closed(stream: &crate::platform::Stream) {
 
 /// Copies bytes between stdin/stdout and the core: plain or framed, untouched.
 fn connect(paths: &Paths) -> Result<(), RpcError> {
-    let stream = client::connect_or_start(paths)?;
+    let stream = client::require_existing(paths)?;
     let mut to_core = stream.try_clone().map_err(|e| RpcError::internal(e.to_string()))?;
     std::thread::spawn(move || {
         pump(&mut *crate::platform::console::stdin(), &mut to_core);

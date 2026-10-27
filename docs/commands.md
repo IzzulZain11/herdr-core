@@ -48,7 +48,7 @@ More
   update [--version X|--from <file>]   latest release, at least X, or a build
   machine add|ls|login|update|rename|rm   other machines, over ssh or a command
                               (--via 'fly ssh console -a x --pty=false -C')
-  connect                     the API over stdin/stdout (ssh box hc connect)
+  connect                     a running core's API over stdin/stdout (ssh box hc connect)
   schema                      the API as JSON Schema, for app builders
 
 <t> is an address like t7 or t1b, or a name. In a terminal, attach, read, get,
@@ -88,7 +88,7 @@ Options:
 ## hc connect
 
 ```text
-Speak the protocol over stdin/stdout (`ssh box hc connect`)
+Speak a running core's protocol over stdin/stdout (`ssh box hc connect`)
 
 Usage: hc connect [OPTIONS]
 
