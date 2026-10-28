@@ -134,9 +134,9 @@ pub(super) async fn start(
             .clone();
         let new = NewTerminal {
             template,
+            die_with_parent: parent.is_some() && !p.outlive_parent,
             parent,
             notify: !p.no_notify,
-            die_with_parent: p.die_with_parent,
             rm: p.rm,
             keep: p.keep,
             name: p.name,

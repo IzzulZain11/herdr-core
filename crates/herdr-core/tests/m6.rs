@@ -69,16 +69,16 @@ fn the_parent_comes_from_the_caller_or_flags() {
 }
 
 #[test]
-fn children_outlive_their_parent_unless_they_asked_not_to() {
+fn children_end_with_their_parent_unless_they_asked_to_outlive_it() {
     let s = session();
     let p = run(&s, &[], "sleep 100");
-    let stays = s.json(&["run", "--bg", "--parent", &p, "sleep", "100"])["address"].as_str().unwrap().to_string();
-    let goes = s.json(&["run", "--bg", "--parent", &p, "--die-with-parent", "sleep", "100"])["address"]
+    let goes = s.json(&["run", "--bg", "--parent", &p, "sleep", "100"])["address"].as_str().unwrap().to_string();
+    let stays = s.json(&["run", "--bg", "--parent", &p, "--outlive-parent", "sleep", "100"])["address"]
         .as_str()
         .unwrap()
         .to_string();
     s.json(&["kill", &p]);
-    wait_until("flagged child ends", || get(&s, &goes)["state"] == "finished");
+    wait_until("child ends", || get(&s, &goes)["state"] == "finished");
     assert_eq!(get(&s, &stays)["state"], "live");
 }
 

@@ -662,8 +662,7 @@ pub fn tell_peer(core: &Core, st: &mut State, parent: &str, notes: &[String]) {
 
 /// A parent here finished: machines it started work on end its children that
 /// asked to die with it (once the line is back, if it is down).
-pub fn orphaned_afar(core: &Core, parent: u32) {
-    let mut st = core.lock();
+pub fn orphaned_afar(core: &Core, st: &mut State, parent: u32) {
     let afar = st.reg.terminals.get(&parent).map(|t| t.afar.clone()).unwrap_or_default();
     let message = json!({"jsonrpc": "2.0", "method": "$/orphaned", "params": {"parent": format!("{}/{}", core.info.id, crate::terminals::address(parent))}});
     for id in afar {
@@ -1001,7 +1000,11 @@ pub async fn forward(core: &Core, m: &Machine, method: &str, params: Value) -> R
     }
 }
 
-async fn forward_once(core: &Core, m: &Machine, method: &str, params: Value) -> Result<Value, RpcError> {
+async fn forward_once(core: &Core, m: &Machine, method: &str, mut params: Value) -> Result<Value, RpcError> {
+    if method == "terminal.run" {
+        // An older core ends a child with its parent only when asked to.
+        params["die_with_parent"] = json!(params["outlive_parent"] != true);
+    }
     let deadline = deadline_for(core, method, &params);
     let line = line(core, m).await?;
     // An older core would read no program as "nothing to run".

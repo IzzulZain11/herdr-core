@@ -595,6 +595,7 @@ impl Core {
         } else {
             self.news(st, id);
             let _ = self.jobs.send(crate::notes::Job::Orphaned(id));
+            crate::remote::orphaned_afar(self, st, id); // before `--rm` forgets where it reached
         }
         for v in st.viewers.remove(&id).unwrap_or_default() {
             v.conn.with(|out| out.finish(v.channel, end.to_string().as_bytes()));

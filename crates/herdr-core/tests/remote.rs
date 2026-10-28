@@ -231,17 +231,14 @@ fn waiting_on_children_counts_the_ones_on_other_machines() {
 }
 
 #[test]
-fn a_child_that_dies_with_its_parent_does_so_on_another_machine_too() {
+fn a_child_ends_with_its_parent_on_another_machine_too() {
     let (rohan, s) = with_rohan();
-    let parent = run(&s, &["sh", "-c", &script(&s, "r state=idle; cat")]);
-    let out = s
-        .cmd()
-        .env("HC_TERMINAL_ID", &parent)
-        .args(["run", "--bg", "--on", "rohan", "--die-with-parent", "sleep", "100"])
-        .output()
-        .unwrap();
+    // `--rm`: the parent is forgotten at once, but its children there still hear.
+    let parent = run(&s, &["--rm", "sh", "-c", &script(&s, "r state=idle; w go")]);
+    let out =
+        s.cmd().env("HC_TERMINAL_ID", &parent).args(["run", "--bg", "--on", "rohan", "sleep", "100"]).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    s.json(&["kill", &parent]);
+    touch(&s, "go");
     wait_until("the child there ended", || get(&rohan, "t1")["state"] == "finished");
 }
 

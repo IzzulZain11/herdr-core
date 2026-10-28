@@ -60,6 +60,7 @@ hc read review --lines 100
 Agents started inside an hc terminal become its children.
 They can report back with `hc send` and wait for their children with `hc wait --children all`.
 The parent gets notes when a child needs attention or ends.
+Children end with their parent unless started with `--outlive-parent`.
 
 ## Every machine
 

@@ -177,7 +177,7 @@ fn help_is_for_people_and_points_agents_to_their_own() {
         assert!(for_people.contains(&name.as_str()) || names(&agent, &name), "skill misses `{name}`");
     }
     // Per-command help is still there.
-    assert!(String::from_utf8(s.hc(&["run", "--help"]).stdout).unwrap().contains("--die-with-parent"));
+    assert!(String::from_utf8(s.hc(&["run", "--help"]).stdout).unwrap().contains("--outlive-parent"));
 }
 
 #[test]

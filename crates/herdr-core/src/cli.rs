@@ -393,6 +393,7 @@ fn run(cmd: Option<Cmd>, json: bool, asked: bool) -> Result<Option<Out>, RpcErro
                 (p.line, p.argv) = (Some(line), Vec::new());
             }
             p.wait = !p.bg;
+            p.die_with_parent = !p.outlive_parent; // what an older core reads
             let r = call("terminal.run", to(&p))?;
             if p.wait && !asked {
                 return ran(&r);
@@ -628,7 +629,7 @@ fn flags_after_task(paths: &Paths, p: RunParams) -> Result<(RunParams, bool), Rp
         parent: q.parent.or(p.parent),
         no_parent: p.no_parent || q.no_parent,
         no_notify: p.no_notify || q.no_notify,
-        die_with_parent: p.die_with_parent || q.die_with_parent,
+        outlive_parent: p.outlive_parent || q.outlive_parent,
         rm: p.rm || q.rm,
         keep: p.keep || q.keep,
         bg: p.bg || q.bg,

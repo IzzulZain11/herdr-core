@@ -222,7 +222,6 @@ impl Core {
                     };
                     let core = self.clone();
                     tokio::spawn(async move { core.kill(&kids).await });
-                    crate::remote::orphaned_afar(&self, parent);
                 }
             }
         }
