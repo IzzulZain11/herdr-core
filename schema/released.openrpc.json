@@ -1389,7 +1389,7 @@
       "name": "Apache-2.0"
     },
     "title": "herdr-core",
-    "version": "0.1.12"
+    "version": "0.1.13"
   },
   "methods": [
     {
@@ -1606,12 +1606,12 @@
           }
         },
         {
-          "description": "End it when its parent's program ends.",
+          "description": "Ignored: children end with their parent unless `outlive_parent`.",
           "name": "die_with_parent",
           "required": false,
           "schema": {
             "default": false,
-            "description": "End it when its parent's program ends.",
+            "description": "Ignored: children end with their parent unless `outlive_parent`.",
             "type": "boolean"
           }
         },
@@ -1705,6 +1705,16 @@
               "string",
               "null"
             ]
+          }
+        },
+        {
+          "description": "Keep it running when its parent's program ends (by default it ends too).",
+          "name": "outlive_parent",
+          "required": false,
+          "schema": {
+            "default": false,
+            "description": "Keep it running when its parent's program ends (by default it ends too).",
+            "type": "boolean"
           }
         },
         {
