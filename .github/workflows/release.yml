@@ -35,6 +35,8 @@ jobs:
           # Cross-build on Apple Silicon; verify the Intel binary under Rosetta.
           - { name: macos-x86_64, target: x86_64-apple-darwin, runner: macos-15 }
           - { name: windows-x86_64, target: x86_64-pc-windows-msvc, runner: windows-2025 }
+          # Fork trial. Upstream publish rules are unchanged.
+          - { name: windows-aarch64, target: aarch64-pc-windows-msvc, runner: windows-11-arm }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     defaults:
