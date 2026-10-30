@@ -72,6 +72,13 @@ pub fn spawn(cmd: &Command, log: &Path) -> Option<io::Result<()>> {
             return None;
         }
     };
+    if let Err(e) = ensure_shutdown_guard(&run, log) {
+        if e.kind() == io::ErrorKind::NotFound {
+            eprintln!("{NO_MANAGER} (no systemd-run on PATH)");
+            return None;
+        }
+        return Some(Err(e));
+    }
     let mut caller: BTreeMap<String, String> = super::utf8_vars().collect();
     let mut unset: Vec<&str> = super::SSH_LOGIN.to_vec();
     for (k, v) in cmd.get_envs() {
@@ -124,6 +131,47 @@ pub fn spawn(cmd: &Command, log: &Path) -> Option<io::Result<()>> {
         let _ = std::fs::remove_dir_all(dir);
     }
     Some(started)
+}
+
+// The guard stays active across core upgrades. On shutdown, reversing the
+// holder -> guard -> core start order saves the core before shells can exit.
+fn shutdown_guard(log: &Path) -> String {
+    let hash = log
+        .parent()
+        .unwrap_or(log)
+        .as_os_str()
+        .as_encoded_bytes()
+        .iter()
+        .fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3));
+    format!("hc-shutdown-{hash:016x}.service")
+}
+
+fn ensure_shutdown_guard(run: &Path, log: &Path) -> io::Result<()> {
+    let name = shutdown_guard(log);
+    let start = || {
+        Command::new("systemctl")
+            .env("XDG_RUNTIME_DIR", run)
+            .args(["--user", "start", &name])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    if start() {
+        return Ok(());
+    }
+    let out = Command::new("systemd-run")
+        .env("XDG_RUNTIME_DIR", run)
+        .args(["--user", "--quiet", "--collect", "--service-type=oneshot", "--unit", &name])
+        .args(["-p", "RemainAfterExit=yes", "/usr/bin/true"])
+        .stdin(Stdio::null())
+        .output()?;
+    if out.status.success() || start() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("systemd shutdown guard: {}", String::from_utf8_lossy(&out.stderr).trim())))
+    }
 }
 
 /// EnvironmentFile uses double-quote escaping, not shell evaluation. Literal
@@ -214,6 +262,8 @@ fn unit_args(
         }
         out.push(p.into());
     }
+    let order = if cmd.get_args().next().is_some_and(|arg| arg == "hold") { "Before" } else { "After" };
+    out.extend(["-p".into(), format!("{order}={}", shutdown_guard(log)).into()]);
     // systemd expands $ in a service's command line; $$ is a plain $.
     let literal = |a: &OsStr| OsString::from(a.to_string_lossy().replace('$', "$$"));
     out.push(literal(cmd.get_program()));
@@ -345,6 +395,36 @@ mod tests {
         assert!(args.contains(&"WorkingDirectory=/home/user/my project/a%hb".into()));
         assert!(!args.iter().any(|a| a.to_string_lossy().contains("OOMPolicy")));
         assert!(!args.iter().any(|a| a == "--same-dir" || a.to_string_lossy().starts_with("--working-directory")));
+    }
+
+    #[test]
+    fn shutdown_stops_every_core_before_its_holders_even_after_a_restart() {
+        let args = |name: &str, command: &str, log: &str| {
+            super::unit_args(
+                name,
+                Command::new("/bin/hc").arg(command),
+                Path::new("/run/environment"),
+                &[],
+                Path::new(log),
+                Path::new("/"),
+                259,
+            )
+        };
+        let first = args("hc-serve-first", "serve", "/state/session/core.log");
+        let next = args("hc-serve-next", "serve", "/state/session/core.log");
+        let holder = args("hc-hold-first", "hold", "/state/session/holder.log");
+        let order =
+            first.iter().find_map(|p| p.to_str()?.strip_prefix("After=hc-shutdown-")).expect("core after guard");
+        assert!(
+            next.iter().any(|p| p == OsStr::new(&format!("After=hc-shutdown-{order}"))),
+            "new cores reuse the guard"
+        );
+        assert!(holder.iter().any(|p| p == OsStr::new(&format!("Before=hc-shutdown-{order}"))), "holder stops last");
+        let other = args("hc-serve-other", "serve", "/state/other/core.log");
+        assert!(
+            !other.iter().any(|p| p == OsStr::new(&format!("After=hc-shutdown-{order}"))),
+            "sessions stay separate"
+        );
     }
 
     #[test]
