@@ -147,7 +147,10 @@ paths start at your current folder. Prefer explicit paths for remote work.
 
 - State is `live` or `finished`. Status comes from the program's OSC 7501
   reports: `idle`, `working`, `done`, `blocked`, `error`; plain programs
-  report none. Do not guess status from screen text.
+  report none. Do not guess status from screen text. When an observed
+  foreground job returns control to its shell, its status and records clear;
+  suspending the job does this too. Jobs shorter than the foreground sampling
+  interval may not be observed.
 - `blocked` means a person is needed (permission or a question): read the
   screen and ask your user. `send` refuses unless `--force`; don't use it to
   bypass a permission decision. `error`: read why, then send or kill.
