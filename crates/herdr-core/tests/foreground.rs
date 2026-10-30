@@ -45,6 +45,57 @@ fn returning_to_the_shell_ends_the_foreground_programs_status() {
 }
 
 #[test]
+fn a_core_restart_keeps_the_observed_foreground_until_the_shell_returns() {
+    let mut s = Session::new();
+    s.env.push(("HC_FOREGROUND_MS".into(), "50".into()));
+    let reporter = s.root.join("reporter.sh");
+    std::fs::write(&reporter, script(&s, "r state=working:app=reporter; w quit")).unwrap();
+    let t = run(&s, &["bash", "--noprofile", "--norc", "-i"]);
+    s.json(&["send", &t, &format!("sh {}", reporter.display())]);
+    wait_until("reporter observed before restart", || {
+        let rec = get(&s, &t);
+        rec["foreground"]["pid"].is_i64()
+            && rec["foreground"]["pid"] != rec["pid"]
+            && rec["status"]["app"] == "reporter"
+    });
+    s.env.iter_mut().find(|(key, _)| key == "HC_FOREGROUND_MS").unwrap().1 = "1000".into();
+    s.json(&["server", "restart"]);
+    touch(&s, "quit");
+    wait_until("shell clears the status saved before restart", || {
+        let rec = get(&s, &t);
+        rec["foreground"]["pid"] == rec["pid"] && rec["status"].is_null() && rec["reported"] == false
+    });
+}
+
+#[test]
+fn a_pipeline_with_an_exited_leader_ends_its_status_when_the_shell_returns() {
+    let mut s = Session::new();
+    s.env.push(("HC_FOREGROUND_MS".into(), "50".into()));
+    let reporter = s.root.join("reporter.sh");
+    let tail = s.root.join("tail.sh");
+    std::fs::write(&reporter, script(&s, "r state=working:app=reporter >&2; w leader-quit")).unwrap();
+    std::fs::write(&tail, script(&s, "w tail-quit")).unwrap();
+    let t = run(&s, &["bash", "--noprofile", "--norc", "-i"]);
+    s.json(&["send", &t, &format!("sh {} | sh {}", reporter.display(), tail.display())]);
+    wait_until("reporting pipeline leader observed", || {
+        let rec = get(&s, &t);
+        rec["foreground"]["pid"].is_i64()
+            && rec["foreground"]["pid"] != rec["pid"]
+            && rec["status"]["app"] == "reporter"
+    });
+    touch(&s, "leader-quit");
+    wait_until("leader gone while pipeline still reports working", || {
+        let rec = get(&s, &t);
+        rec["foreground"].is_null() && rec["reported"] == true && rec["status"]["state"] == "working"
+    });
+    touch(&s, "tail-quit");
+    wait_until("shell in front without dead pipeline status", || {
+        let rec = get(&s, &t);
+        rec["foreground"]["pid"] == rec["pid"] && rec["status"].is_null() && rec["reported"] == false
+    });
+}
+
+#[test]
 fn what_runs_in_a_terminal_and_where_is_on_its_record_and_evented() {
     let mut s = Session::new();
     s.env.push(("HC_FOREGROUND_MS".into(), "50".into()));
