@@ -662,7 +662,11 @@ async fn machine_rename(core: Ctx<'_>, p: MachineRenameParams) -> Result<crate::
     if p.new_name != p.machine {
         free_name(core, &st, &p.new_name)?;
     }
-    st.machines[i].name = p.new_name;
+    let id = st.machines[i].id.clone();
+    st.machines[i].name = p.new_name.clone();
+    if p.new_name != p.machine {
+        crate::remote::rename_mirror(core, &mut st, &id, &p.machine, &p.new_name);
+    }
     crate::machines::save(&core.paths.state, &st.machines);
     Ok(st.machines[i].clone())
 }
