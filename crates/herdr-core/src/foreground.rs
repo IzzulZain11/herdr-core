@@ -154,46 +154,21 @@ impl Core {
     /// Keeps every live terminal's `foreground` current, with an event on each change.
     pub async fn watch_foreground(self: Arc<Self>) {
         let ms = std::env::var("HC_FOREGROUND_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(500);
-        let mut away = std::collections::HashSet::new();
         loop {
             tokio::time::sleep(Duration::from_millis(ms)).await;
             let live: Vec<u32> = self.lock().reg.terminals.values().filter(|t| t.is_live()).map(|t| t.id()).collect();
-            away.retain(|id| live.contains(id));
             for id in live {
                 let pgid = self.foreground(id).await;
                 let now = (pgid > 0).then(|| about(pgid)).flatten();
                 let mut st = self.lock();
-                let Some(t) = st.reg.terminals.get_mut(&id).filter(|t| t.is_live()) else {
+                let Some(t) = st.reg.terminals.get_mut(&id).filter(|t| t.is_live() && t.foreground != now) else {
                     continue;
                 };
-                let returned_to_shell = if pgid > 0 && Some(pgid as u32) == t.pid {
-                    let observed_away = away.remove(&id);
-                    observed_away || t.foreground.as_ref().is_some_and(|f| Some(f.pid as u32) != t.pid)
-                } else {
-                    if pgid > 0 {
-                        away.insert(id);
-                    }
-                    false
-                };
-                if t.foreground == now && !(t.reported && returned_to_shell) {
-                    continue;
-                }
-                let reset = (t.reported && returned_to_shell).then(|| {
-                    let mut change = crate::status::reset(t);
-                    t.reported = false;
-                    change.status = true;
-                    change
-                });
                 if let Some(f) = &now {
                     t.last_cwd = Some(f.cwd.clone());
                 }
                 t.foreground = now.clone();
-                if let Some(change) = reset {
-                    self.status_changed(&mut st, id, change);
-                    self.save(&st);
-                } else {
-                    self.save_soon();
-                }
+                self.save_soon();
                 self.emit(&mut st, "foreground", id, serde_json::to_value(&now).unwrap_or_default());
             }
         }
