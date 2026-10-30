@@ -280,15 +280,8 @@ pub async fn dial(
             dial_once(paths, to, session, hello, true).await
         }
         Err(e) if e.kind == "windows_probe" => match dial_once(paths, to, session, hello, true).await {
-            Ok(dialed) => {
-                WINDOWS.lock().unwrap_or_else(|p| p.into_inner()).push(to.target.to_string());
-                Ok(dialed)
-            }
-            Err(e) if e.kind == "incompatible" => {
-                WINDOWS.lock().unwrap_or_else(|p| p.into_inner()).push(to.target.to_string());
-                Err(e)
-            }
-            Err(_) => Err(unreachable(to, "the connection closed")),
+            Err(_) if !is_windows(to.target) => Err(unreachable(to, "the connection closed")),
+            result => result,
         },
         other => other,
     }
@@ -353,6 +346,9 @@ async fn dial_once(
             // cmd and PowerShell, when hc isn't where install.ps1 puts it.
             let missing_windows =
                 windows && (err.contains("is not recognized") || err.contains("cannot find the path"));
+            if missing_windows && !is_windows(target) {
+                WINDOWS.lock().unwrap_or_else(|p| p.into_inner()).push(target.to_string());
+            }
             // Some connection wrappers collapse all remote failures to exit code 1.
             if status == Some(127) || err.contains(NOT_HERE) || missing_windows {
                 return Err(RpcError::new(
@@ -379,6 +375,9 @@ async fn dial_once(
             return Err(unreachable(to, why.trim()));
         }
     };
+    if windows && !is_windows(target) {
+        WINDOWS.lock().unwrap_or_else(|p| p.into_inner()).push(target.to_string());
+    }
     match reply.get("error") {
         Some(e) if e["data"]["kind"] == "unsupported_generation" => Err(RpcError::new(
             "incompatible",
@@ -396,6 +395,7 @@ fn platform(uname: &str) -> String {
     let os = match words.next() {
         Some("Linux") => "linux",
         Some("Darwin") => "macos",
+        Some(os) if os.starts_with("MINGW") || os.starts_with("MSYS") => "windows",
         other => other.unwrap_or("?"),
     };
     let arch = match words.next() {
@@ -455,7 +455,11 @@ pub fn install(paths: &crate::paths::Paths, to: Reach, session: Option<&str>) ->
     let here = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
     let probe = run_raw(paths, to, "uname -sm", b"")?;
     let err = String::from_utf8_lossy(&probe.stderr);
-    if err.contains("'uname' is not recognized") || err.contains("The term 'uname' is not recognized") {
+    let there = platform(&last_line(&probe.stdout));
+    if err.contains("'uname' is not recognized")
+        || err.contains("The term 'uname' is not recognized")
+        || (probe.status.success() && there.starts_with("windows "))
+    {
         if to.via {
             return Err(RpcError::new("install_failed", format!("{target} runs Windows"), "install hc there yourself"));
         }
@@ -469,7 +473,6 @@ pub fn install(paths: &crate::paths::Paths, to: Reach, session: Option<&str>) ->
             "nothing was changed there",
         ));
     }
-    let there = platform(&last_line(&probe.stdout));
     // Same OS and CPU: this very hc. Else this version's released build for it.
     let exe = if there == here {
         std::env::current_exe()
@@ -567,6 +570,8 @@ mod tests {
         assert!(check_target(Reach { target: "fly ssh console -C", via: true }).is_ok() || cfg!(windows));
         assert_eq!(platform("Darwin arm64"), "macos aarch64");
         assert_eq!(platform("Linux x86_64"), "linux x86_64");
+        assert_eq!(platform("MINGW64_NT-10.0 x86_64"), "windows x86_64");
+        assert_eq!(platform("MSYS_NT-10.0 x86_64"), "windows x86_64");
     }
 
     #[test]

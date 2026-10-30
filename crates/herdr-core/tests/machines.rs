@@ -124,6 +124,88 @@ fn a_windows_probe_keeps_a_native_protocol_mismatch() {
 }
 
 #[test]
+fn a_windows_probe_keeps_native_core_errors() {
+    let mut s = Session::new();
+    let wrapper = s.root.join("unavailable-ssh");
+    std::fs::write(&wrapper, "#!/bin/sh\ncase \"$2\" in sh\\ *) exit 0;; esac\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"message\":\"native startup failed\",\"data\":{\"kind\":\"unavailable\"}}}'\n").unwrap();
+    std::fs::set_permissions(&wrapper, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    s.env.push(("HC_SSH".into(), wrapper.display().to_string()));
+    let (_, error) = s.err(&["--json", "machine", "add", "unavailable-windows"]);
+    assert_eq!(error["error"]["kind"], "unavailable", "{error}");
+    assert_eq!(error["error"]["message"], "native startup failed", "{error}");
+}
+
+#[test]
+fn a_windows_machine_with_git_sh_installs_the_native_build_when_missing() {
+    for uname in ["MINGW64_NT-10.0 x86_64", "MSYS_NT-10.0 x86_64"] {
+        let rohan = Session::new();
+        let mut s = Session::new();
+        let (_, ssh) = fake_ssh(&s, &[("rohan", &rohan)]);
+        let bin = s.root.join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        let releases = s.root.join(format!("releases/core/{}", env!("CARGO_PKG_VERSION")));
+        std::fs::create_dir_all(&releases).unwrap();
+        std::fs::write(releases.join("windows.zip"), b"windows test build").unwrap();
+        std::fs::write(
+            releases.join("manifest.json"),
+            json!({
+                "version": env!("CARGO_PKG_VERSION"), "generation": 1,
+                "targets": {"windows-x86_64": {
+                    "url": format!("file://{}/windows.zip", releases.display()),
+                    "sha256": "2ab258378fc8f9fb3de76603fe051843b98403eb35246087e05a6912ab85b88d"
+                }}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let wrapper = bin.join("ssh");
+        std::fs::write(&wrapper, format!(r#"#!/bin/sh
+case "$2" in
+  sh\ *) exit 0;;
+  'uname -sm') echo '{uname}'; exit 0;;
+  powershell\ *) [ -f '{root}/copied' ] || exit 1; touch '{root}/installed'; exit 0;;
+  *--version) echo 'herdr-core test'; exit 0;;
+esac
+if [ ! -f '{root}/installed' ]; then
+  echo "'.\\AppData\\Local\\Programs\\herdr-core\\herdr-core.exe' is not recognized as an internal or external command" >&2
+  exit 1
+fi
+exec {ssh} rohan '{core} connect'
+"#, root = s.root.display(), core = rohan.bin.display())).unwrap();
+        let scp = bin.join("scp");
+        std::fs::write(
+            &scp,
+            format!(
+                r#"#!/bin/sh
+for arg do
+  case "$arg" in
+    */hc-install.zip) [ "$(cat "$arg")" = 'windows test build' ] || exit 1; zip=yes;;
+    */hc-install.ps1) [ -s "$arg" ] || exit 1; script=yes;;
+  esac
+done
+[ "$zip:$script" = yes:yes ] || exit 1
+touch '{root}/copied'
+"#,
+                root = s.root.display()
+            ),
+        )
+        .unwrap();
+        for file in [&wrapper, &scp] {
+            std::fs::set_permissions(file, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        }
+        s.env.push(("PATH".into(), format!("{}:{}", bin.display(), std::env::var("PATH").unwrap())));
+        s.env.push(("HC_SSH".into(), wrapper.display().to_string()));
+        s.env.push(("HERDR_RELEASES_URL".into(), format!("file://{}", s.root.join("releases").display())));
+        let (_, missing) = s.err(&["--json", "machine", "add", "windows-msys"]);
+        assert_eq!(missing["error"]["kind"], "hc_missing", "{missing}");
+        let added = s.json(&["machine", "add", "windows-msys", "--install"]);
+        assert_eq!(added["id"], rohan.json(&["server", "status"])["core"]["id"], "{added}");
+        assert!(s.root.join("installed").exists(), "the native installer ran");
+        s.json(&["machine", "rm", "windows-msys"]);
+    }
+}
+
+#[test]
 fn a_failed_windows_probe_keeps_the_original_posix_error() {
     let mut s = Session::new();
     let wrapper = s.root.join("closed-ssh");
