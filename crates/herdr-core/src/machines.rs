@@ -95,14 +95,25 @@ pub fn save(state: &Path, machines: &[Machine]) {
     }
 }
 
-/// A name from the target's host: `can@rohan.lan` -> `rohan`; IPs stay whole.
-pub fn default_name(target: &str) -> Option<String> {
+/// A free name from the target's host: `can@rohan.lan` -> `rohan`; IPs stay whole.
+pub fn default_name(target: &str, taken: impl Fn(&str) -> bool) -> Option<String> {
     let t = target.strip_prefix("ssh://").unwrap_or(target);
     let host = t.rsplit_once('@').map_or(t, |(_, host)| host);
     let host = host.split(':').next()?.to_ascii_lowercase();
     let ip = host.split('.').all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()));
-    let name = if ip { host } else { host.split('.').next()?.to_string() };
-    check_name(&name).ok().map(|_| name)
+    let mut name = if ip { host } else { host.split('.').next()?.to_string() };
+    if name.len() > 32 {
+        name = name.chars().take(32).collect::<String>().trim_end_matches('-').into();
+    }
+    check_name(&name).ok()?;
+    let base = name.clone();
+    let mut number = 1;
+    while taken(&name) {
+        number += 1;
+        let suffix = format!("-{number}");
+        name = format!("{}{}", base[..base.len().min(32 - suffix.len())].trim_end_matches('-'), suffix);
+    }
+    Some(name)
 }
 
 /// An ssh target goes to ssh as one argument: never an option, never two
@@ -543,11 +554,14 @@ mod tests {
 
     #[test]
     fn a_name_comes_from_the_target_host() {
+        let default_name = |target| super::default_name(target, |_| false);
         assert_eq!(default_name("rohan").as_deref(), Some("rohan"));
         assert_eq!(default_name("can@Rohan.lan").as_deref(), Some("rohan"));
         assert_eq!(default_name("ssh://can@rohan:2222").as_deref(), Some("rohan"));
         assert_eq!(default_name("root@10.0.0.7").as_deref(), Some("10.0.0.7"));
         assert_eq!(default_name("[::1]"), None);
+        assert_eq!(default_name(&format!("{}-extra.example.com", "a".repeat(31))), Some("a".repeat(31)));
+        assert_eq!(super::default_name("rohan", |name| name == "rohan"), Some("rohan-2".into()));
         let ssh = |target| Reach { target, via: false };
         assert!(check_target(ssh("-oProxyCommand=x")).is_err() && check_target(ssh("a b")).is_err());
         assert!(check_target(Reach { target: "fly ssh console -C", via: true }).is_ok() || cfg!(windows));

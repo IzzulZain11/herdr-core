@@ -26,6 +26,71 @@ fn a_machine_is_added_renamed_kept_and_forgotten() {
 }
 
 #[test]
+fn long_host_labels_get_short_names_and_numbered_collisions() {
+    let first = Session::new();
+    let second = Session::new();
+    let third = Session::new();
+    let mut s = Session::new();
+    s.env.push(fake_ssh(&s, &[("node-07", &first), ("node-08", &second), ("node-09", &third)]));
+    for (host, expected) in [
+        ("alice@build-runner-staging-eu-west-3-node-07.example.com", "build-runner-staging-eu-west-3-n"),
+        ("alice@build-runner-staging-eu-west-3-node-08.example.com", "build-runner-staging-eu-west-3-2"),
+        ("alice@build-runner-staging-eu-west-3-node-09.example.com", "build-runner-staging-eu-west-3-3"),
+    ] {
+        let added = s.json(&["machine", "add", host, "--session", "test"]);
+        assert_eq!(added["name"], expected, "{added}");
+        assert_eq!(added["target"], host, "the connection target is never truncated");
+        assert_eq!(added["session"], "test");
+    }
+    assert_eq!(s.json(&["machine", "ls"])["machines"].as_array().unwrap().len(), 3);
+    let (_, error) = s.err(&["--json", "machine", "add", "other", "--name", "build-runner-staging-eu-west-3-n"]);
+    assert_eq!(error["error"]["kind"], "name_taken", "explicit names still reject collisions");
+}
+
+#[test]
+fn concurrent_machine_adds_allocate_names_from_the_registered_machines() {
+    let first = Session::new();
+    let second = Session::new();
+    let mut s = Session::new();
+    let (_, ssh) = fake_ssh(&s, &[("node-07", &first), ("node-08", &second)]);
+    let gate = s.root.join("gated-ssh");
+    std::fs::write(
+        &gate,
+        format!(
+            "#!/bin/sh\ntouch {root}/\"$1\"\nwhile [ ! -e {root}/release ]; do sleep 0.02; done\nexec {ssh} \"$@\"\n",
+            root = s.root.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&gate, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    s.env.push(("HC_SSH".into(), gate.display().to_string()));
+    let hosts = ["build-runner-staging-eu-west-3-node-07", "build-runner-staging-eu-west-3-node-08"];
+    let children: Vec<_> = hosts
+        .iter()
+        .map(|host| {
+            s.cmd()
+                .args(["--json", "machine", "add", host])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap()
+        })
+        .collect();
+    wait_until("both adds connecting", || hosts.iter().all(|host| s.root.join(host).exists()));
+    touch(&s, "release");
+    let mut names: Vec<_> = children
+        .into_iter()
+        .map(|child| {
+            let out = child.wait_with_output().unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+            serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap()["name"].as_str().unwrap().to_string()
+        })
+        .collect();
+    names.sort();
+    assert_eq!(names, ["build-runner-staging-eu-west-3-2", "build-runner-staging-eu-west-3-n"]);
+}
+
+#[test]
 fn a_windows_shell_with_sh_on_path_retries_the_native_line() {
     let rohan = Session::new();
     let mut s = Session::new();
@@ -220,7 +285,7 @@ fn adding_says_what_went_wrong_and_saves_nothing() {
     assert_eq!(down["error"]["kind"], "unreachable");
     assert!(down["error"]["message"].as_str().unwrap().contains("Could not resolve"), "{down}");
     assert_eq!(kind(&["add", "self"]), "invalid_params");
-    assert_eq!(kind(&["add", "rohan"]), "name_taken");
+    assert_eq!(kind(&["add", "rohan"]), "already_added");
     assert_eq!(kind(&["add", "rohan", "--name", "again"]), "already_added");
     // The same core reached at another address: a copy of rohan's disk.
     let (_, copy) = s.err(&["--json", "machine", "add", "can@rohan-copy", "--name", "copy"]);
