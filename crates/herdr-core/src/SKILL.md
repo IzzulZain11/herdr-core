@@ -156,6 +156,11 @@ paths start at your current folder. Prefer explicit paths for remote work.
 - `hc run` without a command starts this machine's own shell. On macOS,
   this is a login shell so it loads the login environment; explicit commands
   are unchanged. Recovery shells use the same rule.
+- `shell = ["nu"]` in `~/.config/herdr-core/config.toml` (Windows:
+  `%APPDATA%\herdr-core\config.toml`) overrides the shell for new terminals
+  and recovery. Each list item is one argument. Changes apply on the next
+  launch; running programs stay running. A missing executable reports
+  `spawn_failed`; recovery retries and logs launch errors in `holder.log`.
 - `hc keep <t>` (or `run --keep`) replaces a lost program with a shell,
   never reruns a task. `hc keep <t> --off` disables recovery. Signal death
   without an exit code is loss too. After a grace delay, recovery runs on
