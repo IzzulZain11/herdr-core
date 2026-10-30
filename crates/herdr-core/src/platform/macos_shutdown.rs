@@ -238,7 +238,7 @@ mod tests {
         }
         let requested = SHUTDOWN.get_or_init(Default::default).clone();
         let watcher =
-            Arc::new(Watcher { intent: Mutex::new(None), requested: requested.clone(), seen: Default::default() });
+            Arc::new(Watcher { intent: Mutex::new(None), requested, seen: Default::default() });
         let prefix = format!("dev.herdr.test.{}.", super::super::random_hex());
         let registration = Registration::new(&prefix, watcher.clone()).unwrap();
         for (index, key) in
