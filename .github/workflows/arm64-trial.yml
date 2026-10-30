@@ -2,7 +2,10 @@
 # starts this workflow by hand. Nothing is signed, published, or uploaded
 # to herdr.dev. The artifact stays on this fork for 7 days.
 #
-# ConPTY in this tag is the upstream x64 copy. The core exe itself is ARM64.
+# The official Zig 0.16.0 aarch64-windows compiler crashes with 0xc0000005
+# (https://codeberg.org/ziglang/zig/issues/31865). Ghostty is built by that
+# compiler, so this job cross-compiles from a Windows x64 runner instead.
+# ConPTY in this tag is still the upstream x64 copy.
 name: ARM64 trial
 
 on:
@@ -16,7 +19,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-11-arm
+    runs-on: windows-2025
     timeout-minutes: 90
     defaults:
       run:
@@ -44,8 +47,16 @@ jobs:
         shell: pwsh
         run: |
           $bin = "target/aarch64-pc-windows-msvc/release/herdr-core.exe"
-          & $bin --version
-          if ($LASTEXITCODE) { throw "it does not run" }
+          # This runner is x64 and cannot start an ARM64 exe. Check the header.
+          $fs = [IO.File]::OpenRead((Resolve-Path $bin))
+          $br = New-Object IO.BinaryReader $fs
+          try {
+            $fs.Position = 0x3C
+            $pe = $br.ReadInt32()
+            $fs.Position = $pe + 4
+            $machine = $br.ReadUInt16()
+          } finally { $br.Close(); $fs.Close() }
+          if ($machine -ne 0xAA64) { throw "herdr-core.exe machine is 0x$($machine.ToString('X4')), want ARM64 0xAA64" }
           $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($bin)).ToLower()
           foreach ($dll in "vcruntime140", "msvcp140", "api-ms-win-crt-") { if ($text.Contains($dll)) { throw "herdr-core.exe imports $dll" } }
           New-Item -ItemType Directory -Force stage/THIRD-PARTY-NOTICES, dist | Out-Null
