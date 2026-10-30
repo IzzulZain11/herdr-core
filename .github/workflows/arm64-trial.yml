@@ -1,0 +1,62 @@
+# Personal fork trial. GitHub Actions builds Windows ARM64 when someone
+# starts this workflow by hand. Nothing is signed, published, or uploaded
+# to herdr.dev. The artifact stays on this fork for 7 days.
+#
+# ConPTY in this tag is the upstream x64 copy. The core exe itself is ARM64.
+name: ARM64 trial
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_TOOLCHAIN: 1.95.0
+
+jobs:
+  build:
+    runs-on: windows-11-arm
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-pc-windows-msvc
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: aarch64-pc-windows-msvc-release
+          cache-workspace-crates: true
+          cache-bin: false
+      - name: Build
+        run: cargo build --release --locked --target aarch64-pc-windows-msvc -p herdr-core
+      - name: Pack (Windows)
+        shell: pwsh
+        run: |
+          $bin = "target/aarch64-pc-windows-msvc/release/herdr-core.exe"
+          & $bin --version
+          if ($LASTEXITCODE) { throw "it does not run" }
+          $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($bin)).ToLower()
+          foreach ($dll in "vcruntime140", "msvcp140", "api-ms-win-crt-") { if ($text.Contains($dll)) { throw "herdr-core.exe imports $dll" } }
+          New-Item -ItemType Directory -Force stage/THIRD-PARTY-NOTICES, dist | Out-Null
+          Copy-Item $bin stage/
+          scripts/fetch-conpty.ps1 -Dest stage
+          Copy-Item distribution/windows/* stage/THIRD-PARTY-NOTICES/
+          tar -a -cf dist/herdr-core-windows-aarch64.zip -C stage herdr-core.exe conpty THIRD-PARTY-NOTICES
+          if ($LASTEXITCODE) { throw "zip failed" }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: herdr-core-windows-aarch64
+          path: dist/herdr-core-windows-aarch64.zip
+          if-no-files-found: error
+          retention-days: 7
