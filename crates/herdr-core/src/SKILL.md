@@ -168,8 +168,8 @@ paths start at your current folder. Prefer explicit paths for remote work.
   terminals you started; `hc ls` includes your user's other live work.
 - `hc update` also restarts an older running core when the installed binary
   is already current. JSON reports `restarted: true`; terminals keep running.
-  Managed installs, including a non-writable install folder on Unix, must
-  be updated with their package manager instead.
+  Managed installs must be updated with their package manager instead, and
+  one in a folder you can't write (Unix) the way it was installed.
 - Never `hc server stop` or restart the user's core unless asked. It affects
   every terminal. Tests need their own `HC_SESSION` and scratch XDG paths.
 - Errors are `{error: {kind, message, hint}}` on stderr. Exit codes include
