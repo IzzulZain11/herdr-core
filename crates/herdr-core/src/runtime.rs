@@ -89,6 +89,8 @@ pub struct State {
     pub machine_outbox: HashMap<String, Vec<serde_json::Value>>,
     /// When each holder was last reconnected to after our reading of it failed.
     pub relinked: HashMap<String, Instant>,
+    /// Failed relinks still own programs; explicit stop must tell them to exit.
+    pub disconnected: HashMap<String, PathBuf>,
     /// Each connected machine's terminals as seen from here, kept current by
     /// its events: machine id -> address (`rohan/t7`) -> record.
     pub mirrors: HashMap<String, std::collections::BTreeMap<String, serde_json::Value>>,
@@ -360,6 +362,7 @@ impl Core {
         }
         let (adopted, nudge) = {
             let mut st = self.lock();
+            st.disconnected.remove(&welcome.instance);
             st.holders.push(link);
             let adopted = self.adopt(&mut st, &welcome, tails);
             self.save(&st);
@@ -447,6 +450,9 @@ impl Core {
             rec.cols = h.cols;
             rec.rows = h.rows;
             rec.screen = if exact { "exact" } else { "inexact" }.into();
+            if st.pending.contains_key(&id) {
+                self.spawn_result(st, instance, id, Ok(h.pid));
+            }
             match h.exit {
                 Some(exit) => exited.push((id, exit)),
                 None if !exact => nudge.push((id, h.cols, h.rows)),
@@ -563,7 +569,9 @@ impl Core {
         if let Ok(ours) = ours {
             let _ = ours.shutdown(std::net::Shutdown::Both);
         }
-        self.lock().holders.retain(|l| l.instance != instance);
+        let mut st = self.lock();
+        st.holders.retain(|l| l.instance != instance);
+        st.disconnected.insert(instance.into(), socket.to_path_buf());
     }
 
     /// Handles the holder's frames until it says goodbye (true) or the link ends (false).
@@ -578,45 +586,7 @@ impl Core {
                     } else {
                         Err(proto::parse::<proto::SpawnFailed>(&payload).map_or_else(|e| e.to_string(), |f| f.error))
                     };
-                    // Recorded here, on the thread that also handles exits, so `created`
-                    // always comes before `finished`.
-                    let waiting = st.pending.get(&id).is_some_and(|tx| !tx.is_closed());
-                    let result = match (result, st.reg.terminals.get_mut(&id)) {
-                        (Ok(pid), Some(t)) if t.is_live() => {
-                            let restarted = t.reason.is_some();
-                            t.pid = Some(pid);
-                            t.program_started_ms = Some(now_ms());
-                            t.reason = None;
-                            t.exit_code = None;
-                            t.signal = None;
-                            let created = t.clone();
-                            let public =
-                                serde_json::to_value(crate::terminals::Public(created.clone())).unwrap_or_default();
-                            self.emit(&mut st, if restarted { "restarted" } else { "created" }, id, public);
-                            self.save(&st);
-                            Ok(created)
-                        }
-                        (Ok(_), _) => {
-                            // Its run gave up waiting: nobody can address it, so it must not live.
-                            if let Some(link) = st.holders.iter().find(|l| l.instance == instance) {
-                                link.send(&proto::json_frame(
-                                    proto::SIGNAL,
-                                    id,
-                                    &proto::Signal { signal: signal::KILL },
-                                ));
-                                link.send(&proto::frame(proto::RELEASE, id, &[]));
-                            }
-                            Err("removed while starting".into())
-                        }
-                        (Err(e), Some(t)) if t.is_live() && (t.reason.is_some() || !waiting) => {
-                            self.spawn_failed(&mut st, id);
-                            Err(e)
-                        }
-                        (Err(e), _) => Err(e),
-                    };
-                    if let Some(tx) = st.pending.remove(&id) {
-                        let _ = tx.send(result);
-                    }
+                    self.spawn_result(&mut st, instance, id, result);
                 }
                 proto::EXITED => {
                     if let Ok(exit) = proto::parse::<Exit>(&payload) {
@@ -640,6 +610,43 @@ impl Core {
             }
         }
         Ok(false)
+    }
+
+    fn spawn_result(&self, st: &mut State, instance: &str, id: u32, result: Result<u32, String>) {
+        // Recorded here, on the thread that also handles exits, so `created`
+        // always comes before `finished`.
+        let waiting = st.pending.get(&id).is_some_and(|tx| !tx.is_closed());
+        let result = match (result, st.reg.terminals.get_mut(&id)) {
+            (Ok(pid), Some(t)) if t.is_live() => {
+                let restarted = t.reason.is_some();
+                t.pid = Some(pid);
+                t.program_started_ms = Some(now_ms());
+                t.reason = None;
+                t.exit_code = None;
+                t.signal = None;
+                let created = t.clone();
+                let public = serde_json::to_value(crate::terminals::Public(created.clone())).unwrap_or_default();
+                self.emit(st, if restarted { "restarted" } else { "created" }, id, public);
+                self.save(st);
+                Ok(created)
+            }
+            (Ok(_), _) => {
+                // Its run gave up waiting: nobody can address it, so it must not live.
+                if let Some(link) = st.holders.iter().find(|l| l.instance == instance) {
+                    link.send(&proto::json_frame(proto::SIGNAL, id, &proto::Signal { signal: signal::KILL }));
+                    link.send(&proto::frame(proto::RELEASE, id, &[]));
+                }
+                Err("removed while starting".into())
+            }
+            (Err(e), Some(t)) if t.is_live() && (t.reason.is_some() || !waiting) => {
+                self.spawn_failed(st, id);
+                Err(e)
+            }
+            (Err(e), _) => Err(e),
+        };
+        if let Some(tx) = st.pending.remove(&id) {
+            let _ = tx.send(result);
+        }
     }
 
     /// A program ended: record it, keep its final screen on disk, let the holder forget it.
@@ -805,6 +812,29 @@ impl Core {
                 })
                 .collect()
         };
+        if mode == Goodbye::Shutdown {
+            let sockets: Vec<_> = self.lock().disconnected.drain().map(|(_, path)| path).collect();
+            for path in sockets {
+                if let Ok(mut stream) = platform::connect(&path) {
+                    let Ok(watch) = stream.try_clone() else { continue };
+                    let (done, waiting) = mpsc::channel::<()>();
+                    std::thread::spawn(move || {
+                        if waiting.recv_timeout(Duration::from_secs(6)) == Err(mpsc::RecvTimeoutError::Timeout) {
+                            let _ = watch.shutdown(std::net::Shutdown::Both);
+                        }
+                    });
+                    // The welcome may be unreadable (the reason relink failed).
+                    // Shutdown needs no inventory: the holder sweeps everything it owns.
+                    let hello = proto::json_frame(proto::HELLO, 0, &proto::Hello { version: proto::VERSION });
+                    if io::Write::write_all(&mut stream, &hello).is_ok()
+                        && io::Write::write_all(&mut stream, &proto::json_frame(proto::GOODBYE, 0, &mode)).is_ok()
+                    {
+                        let _ = io::copy(&mut stream, &mut io::sink());
+                    }
+                    drop(done);
+                }
+            }
+        }
         for rx in byes {
             // A holder told to shut down first ends every leftover (up to ~3 s).
             let _ = rx.recv_timeout(Duration::from_secs(6));
