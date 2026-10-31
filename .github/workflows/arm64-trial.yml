@@ -1,0 +1,114 @@
+# Personal fork trial for hc 0.1.15 on Windows ARM64.
+# Started by hand. Nothing is signed, published, or uploaded to herdr.dev.
+# The artifact stays on this fork for 7 days. It is not installed by this job.
+#
+# Zig 0.16.0 aarch64-windows crashes with 0xc0000005
+# (https://codeberg.org/ziglang/zig/issues/31865), so Ghostty is
+# cross-compiled on a Windows x64 runner. The runner does not start the exe.
+#
+# The zip contains herdr-core.exe, a copy named hc.exe, and the ARM64 ConPTY
+# from the same pinned Microsoft nupkg the upstream x64 pack uses.
+name: ARM64 trial
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_TOOLCHAIN: 1.95.0
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-pc-windows-msvc
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: aarch64-pc-windows-msvc-0.1.15
+          cache-workspace-crates: true
+          cache-bin: false
+      - name: Build
+        env:
+          # Rust's C runtime goes inside the exe. Zig's Ghostty archive may
+          # still name vcruntime140; the pack step below only notes that.
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --release --locked --target aarch64-pc-windows-msvc -p herdr-core
+      - name: Pack (Windows ARM64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $bin = "target/aarch64-pc-windows-msvc/release/herdr-core.exe"
+          $fs = [IO.File]::OpenRead((Resolve-Path $bin))
+          $br = New-Object IO.BinaryReader $fs
+          try {
+            $fs.Position = 0x3C
+            $pe = $br.ReadInt32()
+            $fs.Position = $pe + 4
+            $machine = $br.ReadUInt16()
+          } finally { $br.Close(); $fs.Close() }
+          if ($machine -ne 0xAA64) { throw "herdr-core.exe machine is 0x$($machine.ToString('X4')), want ARM64 0xAA64" }
+          $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($bin)).ToLower()
+          foreach ($dll in "vcruntime140", "msvcp140", "api-ms-win-crt-") {
+            if ($text.Contains($dll)) { Write-Host "trial note: herdr-core.exe names $dll. Windows ARM64 already ships that DLL." }
+          }
+          New-Item -ItemType Directory -Force stage/THIRD-PARTY-NOTICES, stage/conpty/arm64, dist | Out-Null
+          Copy-Item $bin stage/herdr-core.exe
+          Copy-Item stage/herdr-core.exe stage/hc.exe
+          Copy-Item LICENSE stage/
+          Copy-Item crates/herdr-core/THIRD-PARTY-NOTICES stage/THIRD-PARTY-NOTICES/herdr-core.txt
+
+          $version = "1.24.260710001"
+          $url = "https://github.com/microsoft/terminal/releases/download/v1.24.11911.0/Microsoft.Windows.Console.ConPTY.$version.nupkg"
+          $sha = @{
+            nupkg = "9382ad7becb7e4d84e300578d8e4f4df28f43d979d9055d978c42913c47e0e9d"
+            "runtimes/win-arm64/native/conpty.dll" = "db3d173640b172bafd42d5b541b638a9aeec1c7d0e40dd636bf02822a32c912c"
+            "build/native/runtimes/arm64/OpenConsole.exe" = "ed7622fd0d3bedc9ab9f122f5e58edf0def9e7999224f52dd395ba9f54edbe09"
+          }
+          function Check([string]$path, [string]$want) {
+            $stream = [IO.File]::OpenRead($path)
+            try { $got = -join ([Security.Cryptography.SHA256]::Create().ComputeHash($stream) | ForEach-Object { $_.ToString("x2") }) }
+            finally { $stream.Close() }
+            if ($got -ne $want) { throw "$path`: sha256 $got, expected $want" }
+          }
+          $work = Join-Path ([IO.Path]::GetTempPath()) "hc-conpty-$version"
+          $zip = "$work.zip"
+          if (-not (Test-Path $zip)) {
+            Invoke-WebRequest -UseBasicParsing $url -OutFile "$zip.part"
+            Move-Item -Force "$zip.part" $zip
+          }
+          Check $zip $sha.nupkg
+          if (Test-Path $work) { Remove-Item -Recurse -Force $work }
+          Expand-Archive $zip $work
+          foreach ($pair in @(
+            @("runtimes/win-arm64/native/conpty.dll", "conpty\conpty.dll"),
+            @("build/native/runtimes/arm64/OpenConsole.exe", "conpty\arm64\OpenConsole.exe")
+          )) {
+            Check (Join-Path $work $pair[0]) $sha[$pair[0]]
+            Copy-Item -Force (Join-Path $work $pair[0]) (Join-Path "stage" $pair[1])
+          }
+          Remove-Item -Recurse -Force $work
+          Copy-Item distribution/windows/* stage/THIRD-PARTY-NOTICES/
+          tar -a -cf dist/herdr-core-windows-aarch64.zip -C stage herdr-core.exe hc.exe conpty LICENSE THIRD-PARTY-NOTICES
+          if ($LASTEXITCODE) { throw "zip failed" }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: herdr-core-windows-aarch64
+          path: dist/herdr-core-windows-aarch64.zip
+          if-no-files-found: error
+          retention-days: 7
