@@ -332,7 +332,7 @@ async fn dial_once(
             if !windows {
                 // Windows may find Git's sh but fail in its shim or mangle
                 // the script's quoting. Only our marker proves the script ran.
-                *probe_windows = !err.contains(NOT_HERE) && !wants_login(&err);
+                *probe_windows = status != Some(255) && !err.contains(NOT_HERE) && !wants_login(&err);
             }
             let missing_windows = windows && err.contains(NOT_HERE);
             if missing_windows && !is_windows(target) {

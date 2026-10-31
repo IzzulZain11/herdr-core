@@ -181,6 +181,32 @@ fn a_missing_unix_core_does_not_try_the_windows_line() {
 }
 
 #[test]
+fn an_ssh_connection_failure_does_not_try_the_windows_line() {
+    for via in [false, true] {
+        let mut s = Session::new();
+        let wrapper = s.root.join("offline-ssh");
+        let calls = s.root.join("calls");
+        std::fs::write(
+            &wrapper,
+            format!("#!/bin/sh\necho call >> '{}'\necho 'Connection timed out' >&2\nexit 255\n", calls.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&wrapper, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let wrapper = wrapper.display().to_string();
+        let args = if via {
+            vec!["--json", "machine", "add", "--via", &wrapper, "--name", "offline"]
+        } else {
+            s.env.push(("HC_SSH".into(), wrapper.clone()));
+            vec!["--json", "machine", "add", "offline"]
+        };
+        let (_, error) = s.err(&args);
+        assert_eq!(error["error"]["kind"], "unreachable", "{error}");
+        assert!(error["error"]["message"].as_str().unwrap().ends_with("Connection timed out"), "{error}");
+        assert_eq!(std::fs::read_to_string(calls).unwrap(), "call\n", "via={via}: dial only once");
+    }
+}
+
+#[test]
 fn a_windows_probe_keeps_a_native_protocol_mismatch() {
     let mut s = Session::new();
     let wrapper = s.root.join("incompatible-ssh");
