@@ -131,6 +131,40 @@ fn reconnect_completes_a_launch_whose_acknowledgement_was_lost() {
 }
 
 #[test]
+fn reconnect_completes_a_kept_replacement_whose_acknowledgement_was_lost() {
+    let mut s = Session::new();
+    s.env.push(("SHELL".into(), "/bin/sh".into()));
+    s.json(&["run", "--bg", "--keep", "sleep", "100"]);
+    let original = s.json(&["get", "t1"])["pid"].as_u64().unwrap() as u32;
+    let fault = Fault::new(&s, false);
+    s.json(&["server", "restart"]);
+    let mut events = s.connect();
+    events.call(1, "events.subscribe", serde_json::json!({}));
+    assert_eq!(unsafe { libc::kill(original as i32, libc::SIGTERM) }, 0);
+    let pid = fault.spawned.recv_timeout(Duration::from_secs(5)).unwrap();
+    let start = Instant::now();
+    let terminal = loop {
+        let terminal = s.json(&["get", "t1"]);
+        if terminal["pid"] == pid {
+            break terminal;
+        }
+        assert!(start.elapsed() < Duration::from_secs(5), "replacement was not adopted");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert!(terminal["reason"].is_null(), "{terminal}");
+    assert!(terminal["signal"].is_null(), "{terminal}");
+    let lost = common::next_event(&mut events, |e| e["params"]["type"] == "lost");
+    assert_eq!(lost["params"]["terminal"], "t1");
+    let restarted = common::next_event(&mut events, |e| e["params"]["type"] == "restarted");
+    assert_eq!(restarted["params"]["terminal"], "t1");
+    assert_eq!(restarted["params"]["data"]["pid"], pid);
+    assert!(restarted["params"]["data"]["reason"].is_null());
+    assert!(alive(pid));
+    s.json(&["server", "stop"]);
+    assert!(!alive(pid));
+}
+
+#[test]
 fn explicit_stop_ends_programs_and_holder_after_a_failed_relink() {
     let mut s = Session::new();
     s.env.push(("HC_SPAWN_MS".into(), "2000".into()));

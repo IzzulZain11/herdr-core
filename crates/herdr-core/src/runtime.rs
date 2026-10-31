@@ -450,7 +450,7 @@ impl Core {
             rec.cols = h.cols;
             rec.rows = h.rows;
             rec.screen = if exact { "exact" } else { "inexact" }.into();
-            if st.pending.contains_key(&id) {
+            if rec.reason.is_some() || st.pending.contains_key(&id) {
                 self.spawn_result(st, instance, id, Ok(h.pid));
             }
             match h.exit {
