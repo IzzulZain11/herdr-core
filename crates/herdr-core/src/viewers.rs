@@ -236,12 +236,20 @@ impl Core {
 
     pub fn viewer_facts(&self, conn: &Arc<Conn>, channel: u32, display: Display) {
         let mut st = self.lock();
-        self.touch(&mut st, conn, channel, |v| {
-            v.display.fg = display.fg.or(v.display.fg.take());
-            v.display.bg = display.bg.or(v.display.bg.take());
-            v.display.cursor = display.cursor.or(v.display.cursor.take());
-            v.display.cell = display.cell.or(v.display.cell);
-        });
+        let Some((id, v)) = Self::viewer(&mut st, conn, channel) else { return };
+        v.display.fg = display.fg.or(v.display.fg.take());
+        v.display.bg = display.bg.or(v.display.bg.take());
+        v.display.cursor = display.cursor.or(v.display.cursor.take());
+        v.display.cell = display.cell.or(v.display.cell);
+        let display = st.viewers[&id]
+            .iter()
+            .filter(|v| !v.observe)
+            .max_by_key(|v| v.active_at)
+            .filter(|v| Arc::ptr_eq(&v.conn, conn) && v.channel == channel)
+            .map(|v| v.display.clone());
+        if let Some(display) = display {
+            self.apply_display(&mut st, id, Some(&display));
+        }
     }
 
     /// Focus changes count as activity, and reach programs that asked for them.
@@ -284,15 +292,10 @@ impl Core {
         let leader = st.viewers.get(&id).and_then(|vs| vs.iter().filter(|v| !v.observe).max_by_key(|v| v.active_at));
         let (cols, rows) = leader.map_or_else(|| self.headless(), |v| v.size);
         let display = leader.map(|v| v.display.clone());
-        let Some(screen) = st.screens.get_mut(&id) else { return };
-        if let Some(d) = display {
-            screen.set_display(rgb(&d.fg), rgb(&d.bg), rgb(&d.cursor), d.cell.map(|[w, h]| (w, h)));
+        if !st.screens.contains_key(&id) {
+            return;
         }
-        // Display changes can notify an idle program, even without a resize or output.
-        let replies = Relay::take_responses(screen);
-        if let Some(link) = st.link(id) {
-            link.input(id, &replies);
-        }
+        self.apply_display(st, id, display.as_ref());
         let rec = st.reg.terminals.get_mut(&id).expect("live terminal");
         if (rec.cols, rec.rows) == (cols, rows) || cols == 0 || rows == 0 {
             return;
@@ -305,6 +308,18 @@ impl Core {
         }
         self.save_soon();
         self.emit(st, "size", id, serde_json::json!({"cols": cols, "rows": rows}));
+    }
+
+    fn apply_display(&self, st: &mut State, id: u32, display: Option<&Display>) {
+        let Some(screen) = st.screens.get_mut(&id) else { return };
+        if let Some(d) = display {
+            screen.set_display(rgb(&d.fg), rgb(&d.bg), rgb(&d.cursor), d.cell.map(|[w, h]| (w, h)));
+        }
+        // Display changes can notify an idle program, even without a resize or output.
+        let replies = Relay::take_responses(screen);
+        if let Some(link) = st.link(id) {
+            link.input(id, &replies);
+        }
     }
 }
 

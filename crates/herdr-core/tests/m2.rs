@@ -180,6 +180,22 @@ fn size_follows_the_last_active_typing_viewer() {
 }
 
 #[test]
+fn display_facts_do_not_take_size_leadership_from_an_active_viewer() {
+    let s = Session::new();
+    let t = run(&s, &["sleep", "100"]);
+    let mut a = Viewer::attach(&s, &t, 100, 30, json!({}));
+    let mut b = Viewer::attach(&s, &t, 80, 24, json!({}));
+    b.typed(b"typing");
+    b.conn.call("terminal.get", json!({"terminal": t}));
+    assert_eq!(size(&s, &t), (80, 24));
+
+    a.conn.send(a.channel, wire::FACTS, br##"{"bg":"#ffffff"}"##);
+    let record = a.conn.call("terminal.get", json!({"terminal": t}));
+    assert_eq!((record["result"]["cols"].as_u64(), record["result"]["rows"].as_u64()), (Some(80), Some(24)));
+    assert_eq!(size(&s, &t), (80, 24));
+}
+
+#[test]
 fn a_stalled_viewer_blocks_nobody_and_catches_up_with_a_repaint() {
     let s = Session::new();
     let flood = after_go(&s, "head -c 8000000 /dev/zero | tr '\\0' x; echo; echo DONE; sleep 100");
