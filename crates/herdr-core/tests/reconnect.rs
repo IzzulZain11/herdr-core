@@ -57,6 +57,8 @@ impl Fault {
                         _ => return,
                     }
                 };
+                // macOS inherits the listener's nonblocking mode on accepted sockets.
+                client.set_nonblocking(false).unwrap();
                 let upstream = UnixStream::connect(&endpoint).unwrap();
                 let reject = injected && fail_handshake;
                 // Only the first connection can contain the test's spawn.
