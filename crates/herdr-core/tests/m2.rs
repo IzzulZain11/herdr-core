@@ -206,6 +206,64 @@ fn a_stalled_viewer_blocks_nobody_and_catches_up_with_a_repaint() {
 }
 
 #[test]
+fn a_stalled_viewer_never_prints_the_tail_of_dropped_image_data() {
+    let s = Session::new();
+    let flood = after_go(
+        &s,
+        "printf 'before\\r\\n\\033_Gm=1;'; head -c 8000000 /dev/zero | tr '\\0' A; \
+         printf '\\033\\\\\\r\\nafter\\r\\n'; sleep 100",
+    );
+    let t = run(&s, &["sh", "-c", &flood]);
+    let mut stalled = Viewer::attach(&s, &t, 80, 24, json!({}));
+    stalled.credit = false;
+    let mut live = Viewer::attach(&s, &t, 80, 24, json!({"observe": true}));
+    go(&s);
+    live.shows("after");
+    stalled.drain(Duration::from_millis(100));
+    stalled.credit = true;
+    stalled.conn.send(stalled.channel, wire::CREDIT, &(64u32 << 20).to_le_bytes());
+    stalled.shows("after");
+    for viewer in [&live, &stalled] {
+        let text = viewer.text();
+        assert!(!text.contains("AAAA"), "image payload leaked: {text:?}");
+    }
+}
+
+#[test]
+fn attaching_and_resizing_mid_image_never_turns_its_tail_into_text() {
+    for bytes in [4000, 100_000] {
+        let s = Session::new();
+        let ready = s.root.join("ready");
+        let finish = s.root.join("finish");
+        let program = after_go(
+            &s,
+            &format!(
+                "printf 'before\\r\\n\\033_Gm=1;'; head -c {bytes} /dev/zero | tr '\\0' A; \
+             touch {}; while [ ! -e {} ]; do sleep 0.02; done; \
+             printf 'AAAAAAAA\\033\\\\\\r\\nafter\\r\\n'; sleep 100",
+                ready.display(),
+                finish.display()
+            ),
+        );
+        let t = run(&s, &["sh", "-c", &program]);
+        let mut original = Viewer::attach(&s, &t, 80, 24, json!({}));
+        go(&s);
+        wait_until("image prefix written", || ready.exists());
+        original.drain(Duration::from_millis(100));
+        let mut late = Viewer::attach(&s, &t, 80, 24, json!({}));
+        late.shows("before");
+        late.conn.send(late.channel, wire::RESIZE, &[90, 0, 25, 0]);
+        std::fs::write(&finish, "").unwrap();
+        late.shows("after");
+        original.shows("after");
+        for viewer in [&original, &late] {
+            let text = viewer.text();
+            assert!(!text.contains("AAAA"), "image payload leaked after attach/resize: {text:?}");
+        }
+    }
+}
+
+#[test]
 fn viewers_learn_when_the_program_ends() {
     let s = Session::new();
     let t = run(&s, &["sh", "-c", "read x; exit 7"]);

@@ -33,6 +33,8 @@ pub struct Viewer {
     /// None: not active since it came back after a dropped line.
     active_at: Option<Instant>,
     display: Display,
+    /// An unfinished sequence exceeded continuation tracking; skip its tail.
+    pub(crate) recovering: bool,
 }
 
 fn rgb(hex: &Option<String>) -> Option<Rgb> {
@@ -64,6 +66,7 @@ impl Core {
             ));
         }
         let channel = conn.new_channel();
+        let recovering = st.screens[&id].continuation().is_none();
         st.viewers.entry(id).or_default().push(Viewer {
             conn: conn.clone(),
             channel,
@@ -71,6 +74,7 @@ impl Core {
             size: req.size,
             active_at: (!req.resumed).then(Instant::now),
             display: req.display,
+            recovering,
         });
         self.apply_size(&mut st, id);
         let paint = first_paint(&st, id, req.history);
@@ -96,7 +100,9 @@ impl Core {
         let holder = holders.iter().find(|l| Some(&l.instance) == instance.as_ref());
         let Some(screen) = screens.get_mut(&id) else { return };
         let relay = relays.entry(id).or_default();
-        let out = relay.feed(screen, bytes);
+        let recovering = viewers.get(&id).into_iter().flatten().any(|v| v.recovering);
+        let (out, recovered) =
+            if recovering { relay.feed_to_ground(screen, bytes) } else { (relay.feed(screen, bytes), None) };
         let win32_input = relay.win32_input.take();
         if let Some(watchers) = output_watch.get_mut(&id).filter(|_| !scrolling) {
             watchers.retain(|w| w.send(out.clone()).is_ok());
@@ -107,14 +113,6 @@ impl Core {
         let reports = screen.take_status_reports();
         let title = screen.take_title_changed().then(|| screen.title());
         let full_screen = screen.alt_screen();
-        let mut behind = Vec::new();
-        for v in viewers.get(&id).into_iter().flatten().filter(|_| !scrolling) {
-            v.conn.with(|ob| {
-                if !ob.data(v.channel, &out) {
-                    behind.push((v.conn.clone(), v.channel));
-                }
-            });
-        }
         // Before any repaint below, so it carries the mode this output just set.
         if let Some(on) = win32_input
             && let Some(t) = st.reg.terminals.get_mut(&id).filter(|t| t.win32_input != on)
@@ -122,11 +120,37 @@ impl Core {
             t.win32_input = on;
             self.save(st);
         }
-        for (conn, channel) in behind {
-            let paint = first_paint(st, id, 0); // too far behind: start over from now
-            conn.with(|ob| {
-                ob.data(channel, &paint);
+        let recovered = recovered.map(|(at, paint)| {
+            let mut paint = paint_state(st, id, paint);
+            paint.extend_from_slice(&out[at..]);
+            paint
+        });
+        let mut behind = Vec::new();
+        for (index, v) in st.viewers.get_mut(&id).into_iter().flatten().enumerate().filter(|_| !scrolling) {
+            let bytes = if v.recovering {
+                let Some(paint) = &recovered else { continue };
+                v.recovering = false;
+                paint
+            } else {
+                &out
+            };
+            v.conn.with(|ob| {
+                if !ob.data(v.channel, bytes) {
+                    behind.push(index);
+                }
             });
+        }
+        if !behind.is_empty() {
+            let paint = first_paint(st, id, 0);
+            let recovering = st.screens[&id].continuation().is_none();
+            let viewers = st.viewers.get_mut(&id).expect("viewers with queued output");
+            for index in behind {
+                let v = &mut viewers[index];
+                v.recovering = recovering;
+                v.conn.with(|ob| {
+                    ob.data(v.channel, &paint);
+                });
+            }
         }
         if full_screen && let Some(t) = st.reg.terminals.get_mut(&id) {
             t.full_screen = true;
@@ -289,7 +313,18 @@ impl Core {
 /// must see them too; a viewer repainted after falling behind gets the mode
 /// either way).
 pub(crate) fn first_paint(st: &State, id: u32, history: usize) -> Vec<u8> {
-    let mut paint = st.screens[&id].paint(history);
+    let screen = &st.screens[&id];
+    let mut paint = paint_state(st, id, screen.paint(history));
+    if let Some(continuation) = screen.continuation() {
+        paint.extend(continuation);
+    }
+    paint
+}
+
+fn paint_state(st: &State, id: u32, screen: Vec<u8>) -> Vec<u8> {
+    // A backlog may have ended in any parser state, not at an escape boundary.
+    let mut paint = vec![0x18];
+    paint.extend(screen);
     let t = &st.reg.terminals[&id];
     paint.extend(if t.win32_input { b"\x1b[?9001h" } else { b"\x1b[?9001l" });
     let root = t.status.iter().map(|s| ("", s));
