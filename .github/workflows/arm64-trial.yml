@@ -1,4 +1,4 @@
-# Personal fork trial for hc 0.1.15 on Windows ARM64.
+# Personal fork trial for hc 0.1.16 on Windows ARM64.
 # Started by hand. Nothing is signed, published, or uploaded to herdr.dev.
 # The artifact stays on this fork for 7 days. It is not installed by this job.
 #
@@ -40,7 +40,7 @@ jobs:
           version: 0.16.0
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          key: aarch64-pc-windows-msvc-0.1.15
+          key: aarch64-pc-windows-msvc-0.1.16
           cache-workspace-crates: true
           cache-bin: false
       - name: Build
